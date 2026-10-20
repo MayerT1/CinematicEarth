@@ -1,5 +1,7 @@
 # CinematicEarth
 
+[![PyPI](https://img.shields.io/pypi/v/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![tests](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml/badge.svg)](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
+
 Cinematic multi-stop flyovers for **Google Earth Studio**. You give it a list of stops (and, if you want, camera moves per stop). It writes:
 
 - **`.esp`**: an Earth Studio project. Open it, check it, render.
@@ -22,8 +24,9 @@ stops.md ──► cinematicearth build ──► flyover.esp ──► Earth St
 ## Install
 
 ```bash
-pip install "CinematicEarth[all] @ git+https://github.com/<you>/CinematicEarth.git"
-# core only (numpy):           pip install "CinematicEarth @ git+https://github.com/<you>/CinematicEarth.git"
+pip install "CinematicEarth[all]"        # everything: plots, YAML, annotated video (bundled ffmpeg)
+pip install CinematicEarth               # core only (numpy): build .esp / .kml
+pip install "git+https://github.com/MayerT1/CinematicEarth.git"   # latest from GitHub
 # local dev:                   pip install -e ".[dev]"
 ```
 

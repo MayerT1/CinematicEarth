@@ -19,9 +19,8 @@ md("""
 """)
 
 code("""
-# 1 | install (set to the GitHub account that hosts the repo)
-GITHUB_USER = "YOUR_GITHUB_USER"
-!pip install -q "CinematicEarth[all] @ git+https://github.com/{GITHUB_USER}/CinematicEarth.git"
+# 1 | install from PyPI  (latest dev: !pip install -q "CinematicEarth[all] @ git+https://github.com/MayerT1/CinematicEarth.git")
+!pip install -q "CinematicEarth[all]"
 import cinematicearth as ce
 print("cinematicearth", ce.__version__)
 """)

@@ -10,7 +10,7 @@ import urllib.request
 from typing import Optional, Tuple
 
 _CACHE = os.path.join(os.path.expanduser("~"), ".cache", "cinematicearth", "geo.json")
-_UA = "cinematicearth/0.1 (https://github.com/; flyover planning)"
+_UA = "CinematicEarth (https://github.com/MayerT1/CinematicEarth)"
 
 
 def _load():
