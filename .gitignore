@@ -1,0 +1,17 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+# renders / outputs
+*.zip
+*.mp4
+*.mov
+frames/
+*.esp
+!examples/*.esp
+*.plan.json
+*.kml
+!examples/*.kml
+*.png
+.venv/

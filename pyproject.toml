@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CinematicEarth"
+version = "0.1.0"
+description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves -> .esp project, KML tour, annotated MP4"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Tim Mayer", email = "tjm0042@uah.edu" }]
+keywords = ["google earth studio", "esp", "flyover", "kml", "geospatial", "animation"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = ["numpy>=1.21"]
+
+[project.optional-dependencies]
+yaml = ["pyyaml"]
+plot = ["matplotlib"]
+video = ["opencv-python-headless", "pillow", "tqdm"]
+all = ["pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm"]
+dev = ["pytest", "pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm"]
+
+[project.scripts]
+cinematicearth = "cinematicearth.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/tjmayer/CinematicEarth"
+
+[tool.setuptools.packages.find]
+where = ["src"]
