@@ -170,19 +170,37 @@ def _inject(template: dict, pos, rotb, frames, fps, width, height, name):
     return esp
 
 
-def build_esp(plan, template: Optional[dict] = None) -> dict:
+def build_esp(plan, template: Optional[dict] = None, part: Optional[int] = None) -> dict:
+    """Project dict for the whole plan, or for one part (see Settings.max_part_seconds)."""
     st = plan.settings
-    pos, rotb = encode_tracks(plan.times, plan.cam, plan.rot, plan.duration)
+    parts = plan.parts()
+    a, b = parts[part or 0] if part is not None or len(parts) == 1 else (0.0, plan.frames / st.fps)
+    t, cam, rot, _ = plan.keyframes(a, b)
+    frames = int(round((b - a) * st.fps))
+    pos, rotb = encode_tracks(t, cam, rot, frames / st.fps)
+    name = st.title if len(parts) == 1 or part is None else f"{st.title} part {part + 1}"
     if template is not None:
-        return _inject(template, pos, rotb, plan.frames, st.fps, st.width, st.height, st.title)
-    return _template(st.title, st.fps, st.width, st.height, plan.frames, pos, rotb)
+        return _inject(template, pos, rotb, frames, st.fps, st.width, st.height, name)
+    return _template(name, st.fps, st.width, st.height, frames, pos, rotb)
 
 
-def write_esp(plan, path, template_path: Optional[str] = None) -> str:
+def write_esp(plan, path, template_path: Optional[str] = None):
+    """Write path (or path_part01.esp, ... when the plan is split). Returns list of files."""
+    import os
     tpl = None
     if template_path:
         with open(template_path) as f:
             tpl = json.load(f)
-    with open(path, "w") as f:
-        json.dump(build_esp(plan, tpl), f)
-    return path
+    parts = plan.parts()
+    if len(parts) == 1:
+        with open(path, "w") as f:
+            json.dump(build_esp(plan, tpl, 0), f, separators=(",", ":"))
+        return [path]
+    base, ext = os.path.splitext(path)
+    out = []
+    for k in range(len(parts)):
+        p = f"{base}_part{k + 1:02d}{ext or '.esp'}"
+        with open(p, "w") as f:
+            json.dump(build_esp(plan, tpl, k), f, separators=(",", ":"))
+        out.append(p)
+    return out

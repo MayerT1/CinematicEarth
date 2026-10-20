@@ -63,9 +63,38 @@ def test_load_inline_and_lists(tmp_path):
 def test_esp_roundtrip(plan18):
     esp = ce.build_esp(plan18)
     t, cam, rot = ce.decode_tracks(esp)
-    assert np.allclose(cam, plan18.cam, atol=1e-6)
-    assert np.allclose(rot, plan18.rot, atol=1e-6)
+    kt, kcam, krot, _ = plan18.keyframes()
+    assert np.allclose(cam, kcam, atol=1e-6)
+    assert np.allclose(rot, krot, atol=1e-6)
     assert esp["settings"]["duration"] == plan18.frames
+
+
+def test_light_projects(plan18):
+    """Earth Studio chokes on thousands of keyframes: keep projects light."""
+    kt, _, krot, _ = plan18.keyframes()
+    assert len(kt) < 900
+    parts = plan18.parts()
+    assert len(parts) > 1
+    for k in range(len(parts)):
+        esp = ce.build_esp(plan18, part=k)
+        t, cam, rot = ce.decode_tracks(esp)
+        assert len(t) < 250
+        assert np.abs(rot[:, 0]).max() < 400
+        assert esp["settings"]["duration"] <= 90 * 30 + 1
+
+
+def test_parts_join_seamlessly(plan18):
+    parts = plan18.parts()
+    for (a0, a1), (b0, b1) in zip(parts[:-1], parts[1:]):
+        assert abs(a1 - b0) < 1e-9
+        assert abs(round(a1 * 30) - a1 * 30) < 1e-6        # frame aligned
+        _, ca, _, _ = plan18.keyframes(a0, a1)
+        _, cb, _, _ = plan18.keyframes(b0, b1)
+        assert np.allclose(ca[-1], cb[0], atol=1e-6)
+
+
+def test_esp_time_range(plan18):
+    esp = ce.build_esp(plan18, part=0)
     kf = esp["scenes"][0]["attributes"][0]["attributes"][0]["attributes"][0]["keyframes"]
     assert kf[0]["time"] == 0 and abs(kf[-1]["time"] - 1) < 1e-9
 
@@ -95,7 +124,7 @@ def test_orbit_sweep(plan18):
     """Default stop = 45 deg orbit, pulling in from range_start to range_end."""
     w = plan18.stop_windows()[1]
     v0, v1 = plan18.view_at(w["t_start"] + 1e-6), plan18.view_at(w["t_end"] - 1e-6)
-    assert abs((v1.heading - v0.heading) - 45) < 0.5
+    assert abs(abs(v1.heading - v0.heading) - 45) < 0.5   # alternating direction
     assert abs(v0.rng - 7000) < 50 and abs(v1.rng - 3500) < 50
     assert abs(v0.tilt - 60) < 0.5
 

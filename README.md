@@ -27,7 +27,7 @@ pip install "CinematicEarth[all] @ git+https://github.com/<you>/CinematicEarth.g
 # local dev:                   pip install -e ".[dev]"
 ```
 
-The `annotate` and `simulate` commands need `ffmpeg` on PATH. Colab already has it.
+The `annotate` and `simulate` commands use `ffmpeg` from your PATH, or the copy bundled with `imageio-ffmpeg`, which the `[video]`, `[all]` and `[dev]` extras install. That means it works on Windows without installing ffmpeg separately.
 
 ## Quick start
 
@@ -38,7 +38,8 @@ cinematicearth build examples/stops_18.md --speed medium --stop-duration 6
 cinematicearth build "Huntsville, AL; Santa Fe, NM; Kathmandu" --geocode --elevation
 cinematicearth preview stops.md -o preview.png     # ground track / altitude / pacing plots
 cinematicearth simulate flyover.esp flyover.plan.json -o wire.mp4   # wireframe motion check
-cinematicearth annotate render.zip flyover.plan.json -o flyover_final.mp4
+cinematicearth annotate flyover.plan.json render.zip -o flyover_final.mp4
+cinematicearth smoketest                         # tiny 10 s .esp to check Earth Studio import
 cinematicearth moves                               # camera-move reference
 ```
 
@@ -125,9 +126,19 @@ For a short cut of many far-apart stops, use `cut_km: 5000`: long hops become ha
 
 ## Earth Studio workflow
 
-1. `cinematicearth build stops.md`
-2. Earth Studio: **File → Import** `flyover.esp`, scrub the timeline to check it, then **Render**. Advanced render gives JPEG frames as a `.zip`.
-3. `cinematicearth annotate render.zip flyover.plan.json`
+1. `cinematicearth build stops.md --split 90`. This writes `flyover_part01.esp`, `flyover_part02.esp` and so on, each about 90 s with about 130 keyframes.
+2. Earth Studio: **File → Import** each part, scrub the timeline to check it, then **Render**. Advanced render gives JPEG frames as a `.zip`.
+3. `cinematicearth annotate flyover.plan.json part01.zip part02.zip ...` joins the parts into one annotated MP4.
+
+Parts are split at the end of a stop, where the camera is momentarily still, so they join seamlessly.
+
+**Keep projects light.** A browser tab running Earth Studio can hang or crash on very large projects. Version 0.1.0 wrote about 2,400 keyframes per track over 6.5 min, and Chrome crashed on import.
+
+The planner now samples the camera densely, then keeps only the keyframes Earth Studio needs for its own linear interpolation to reproduce the path:
+- **At stops:** the city stays within 3 px of screen centre (`--keyframe-tol`).
+- **In transit:** looser limits, since nothing is pinned to the centre there.
+
+If an import still hangs, run `cinematicearth smoketest` and import `test_tiny.esp`. It's 10 s with 15 keyframes. If that works, use a smaller `--split`. If it doesn't, use the template route below.
 
 You need to credit **Google Earth** on screen when you publish Earth Studio footage. `annotate` adds the credit by default. Turn it off with `--attribution ""`.
 
@@ -148,7 +159,7 @@ Earth Studio's project format isn't documented. The encodings here match a real 
 - `rotationX` (pan / compass heading) is normalised to `minValueRange`..`maxValueRange`.
 - `rotationY` (tilt) is `deg / 180`.
 
-Pan and tilt are written for every keyframe, about 6 keyframes per second (`--keyframe-rate`, `--every-frame`). Camera Target is left off, so nothing depends on how target influence behaves.
+Pan and tilt are written for every keyframe. Keyframes are error-bounded and reduced (see `cinematicearth/keyframes.py`). Pan is re-centred per project to stay within about ±200°, and orbit direction alternates between stops by default (`direction: alternate`). Camera Target is left off, so nothing depends on how target influence behaves.
 
 ## License
 

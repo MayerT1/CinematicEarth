@@ -26,7 +26,7 @@ class Settings:
     tilt: float = 60.0                    # default camera tilt at stops (0 down, 90 horizon)
     range_start: float = 7_000.0          # m, LookAt range when arriving at a stop
     range_end: float = 3_500.0            # m, range at end of default pull-in
-    direction: int = 1                    # +1 clockwise orbit, -1 counter-clockwise
+    direction: Union[int, str] = "alternate"  # 1 clockwise, -1 counter-clockwise, alternate (keeps pan range small)
     ease: str = "smooth"                  # smooth | sine | linear
     intro: bool = True                    # descend from space into first stop
     outro: bool = True                    # pull back to space after last stop
@@ -39,8 +39,11 @@ class Settings:
     hop_apex: float = 0.6                 # apex range = hop_apex x distance
     max_apex: float = 9_000_000.0
     min_leg: float = 3.0                  # seconds, floor for any transit
-    keyframe_rate: float = 6.0            # camera keyframes per second in the .esp
-    keyframe_every_frame: bool = False
+    sample_rate: float = 10.0             # dense camera samples / s (KML, overlay, keyframe source)
+    keyframe_tol_px: float = 3.0          # max drift of the city from screen centre between .esp keyframes
+    max_key_gap: float = 4.0              # s, longest gap between .esp keyframes
+    keyframe_every_frame: bool = False    # write every frame as a keyframe (huge .esp; not recommended)
+    max_part_seconds: Optional[float] = None   # split into several .esp projects of at most this length
 
     def vmax(self) -> float:
         if isinstance(self.speed, (int, float)):
@@ -149,9 +152,18 @@ ALIASES = {
 }
 
 
-def parse_moves(script: Optional[str], settings: Settings) -> MoveScript:
+def orbit_sign(settings: Settings, index: int = 0) -> int:
+    d = settings.direction
+    if isinstance(d, str):
+        if d.lower().startswith("alt"):
+            return 1 if index % 2 == 0 else -1
+        d = float(d)
+    return 1 if float(d) >= 0 else -1
+
+
+def parse_moves(script: Optional[str], settings: Settings, index: int = 0) -> MoveScript:
     if not script or not str(script).strip():
-        script = (f"orbit {settings.orbit * settings.direction} + "
+        script = (f"orbit {settings.orbit * orbit_sign(settings, index)} + "
                   f"zoom {settings.range_start}>{settings.range_end}")
     segs, stretch = [], 1.0
     for raw in re.split(r"[;\n]+", str(script)):
@@ -180,7 +192,7 @@ def parse_moves(script: Optional[str], settings: Settings) -> MoveScript:
                 stretch /= float(arg) if arg else 1.5
                 continue
             if kind == "orbit":
-                seg.moves.append(Move("orbit", b=float(arg) if arg else settings.orbit * settings.direction))
+                seg.moves.append(Move("orbit", b=float(arg) if arg else settings.orbit * orbit_sign(settings, index)))
             elif kind == "zoom":
                 if arg.lower() in ("in", ""):
                     seg.moves.append(Move("zoom", rel="in"))
@@ -201,5 +213,5 @@ def parse_moves(script: Optional[str], settings: Settings) -> MoveScript:
         if seg.moves or seg.duration:
             segs.append(seg)
     if not segs:   # only modifiers were given -> default motion, stretched
-        segs = parse_moves(None, settings).segments
+        segs = parse_moves(None, settings, index).segments
     return MoveScript(segs, stretch)

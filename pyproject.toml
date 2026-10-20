@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "CinematicEarth"
-version = "0.1.0"
+version = "0.1.2"
 description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves -> .esp project, KML tour, annotated MP4"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -22,9 +22,9 @@ dependencies = ["numpy>=1.21"]
 [project.optional-dependencies]
 yaml = ["pyyaml"]
 plot = ["matplotlib"]
-video = ["opencv-python-headless", "pillow", "tqdm"]
-all = ["pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm"]
-dev = ["pytest", "pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm"]
+video = ["opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg"]
+all = ["pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg"]
+dev = ["pytest", "pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg"]
 
 [project.scripts]
 cinematicearth = "cinematicearth.cli:main"

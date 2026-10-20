@@ -8,6 +8,7 @@ range_start: 7000    # m from the city when the orbit starts...
 range_end: 3500      # ...pulling in to this by the end of the orbit
 glide_km: 150        # shorter hops stay low and fly forward; longer hops arc up
 fps: 30
+max_part_seconds: 90 # split into ~90 s Earth Studio projects (light enough for the browser)
 # duration: 240      # uncomment to force a total length; transits are re-paced to fit
 ---
 

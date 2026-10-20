@@ -158,7 +158,7 @@ def _start_values(moves_segments, settings: Settings):
 
 
 def build_stop_pieces(i: int, stop: Stop, start: View, settings: Settings) -> List[Piece]:
-    script = parse_moves(stop.moves, settings)
+    script = parse_moves(stop.moves, settings, i)
     E = ease_fn(settings.ease)
     D = (stop.duration or settings.stop_duration) * script.stretch
     timed = sum(s.duration * script.stretch for s in script.segments if s.duration)
@@ -289,14 +289,77 @@ class Plan:
                 return p.eval(_clamp((t - p.t0) / p.duration) if p.duration > 0 else 1.0)
         return self.pieces[-1].eval(1.0)
 
+    def sample(self, ts, ref_heading=None):
+        """Camera (lat,lon,alt), target, rotation (pan unwrapped, tilt) at times ts."""
+        cam, tgt, rot = [], [], []
+        prev_h = ref_heading
+        for t in ts:
+            v = self.view_at(float(t))
+            clat, clon, calt = v.camera()
+            h, tl = geo.look_rotation(clat, clon, calt, v.lat, v.lon, v.elev)
+            if h is None:                       # nadir view: heading undefined, keep planned one
+                h = v.heading
+            h = geo.unwrap_to(h, prev_h if prev_h is not None else v.heading)
+            prev_h = h
+            cam.append((clat, clon, calt))
+            tgt.append((v.lat, v.lon, v.elev))
+            rot.append((h, tl))
+        return np.asarray(ts, float), np.array(cam), np.array(tgt), np.array(rot)
+
+    def boundaries(self):
+        return [p.t0 for p in self.pieces] + [self.duration]
+
+    def parts(self):
+        """Project windows (t0, t1), split at stop ends, frame-aligned."""
+        st = self.settings
+        T = self.frames / st.fps
+        if not st.max_part_seconds or T <= st.max_part_seconds:
+            return [(0.0, T)]
+        ends = [round(w["t_end"] * st.fps) / st.fps for w in self.stop_windows()[:-1]]
+        out, t0 = [], 0.0
+        for k, e in enumerate(ends):
+            nxt = ends[k + 1] if k + 1 < len(ends) else T
+            if e - t0 >= 1.0 and nxt - t0 > st.max_part_seconds:
+                out.append((t0, e))
+                t0 = e
+        out.append((t0, T))
+        return out
+
+    def keyframes(self, t0=0.0, t1=None):
+        """Reduced keyframes for window [t0, t1]; times returned relative to t0."""
+        from .keyframes import reduce_keyframes
+        st = self.settings
+        t1 = self.frames / st.fps if t1 is None else t1
+        m = (self.times > t0 + 1e-6) & (self.times < t1 - 1e-6)
+        ts = np.r_[t0, self.times[m], t1]
+        i0 = int(np.argmin(np.abs(self.times - t0)))
+        t, cam, tgt, rot = self.sample(ts, ref_heading=self.rot[i0, 0])
+        shift = 360.0 * round(0.5 * (rot[:, 0].min() + rot[:, 0].max()) / 360.0)
+        rot = rot.copy()
+        rot[:, 0] -= shift                      # keep pan near 0 (same view, smaller range)
+        if st.keyframe_every_frame:
+            return t - t0, cam, rot, tgt
+        keep = [b for b in self.boundaries() if t0 < b < t1]
+        # strict at stops (city locked to centre, annotations), relaxed in transit
+        at_stop = np.zeros(len(t), bool)
+        for w in self.stop_windows():
+            at_stop |= (t >= w["t_start"] - 1e-6) & (t <= w["t_end"] + 1e-6)
+        px = np.where(at_stop, st.keyframe_tol_px, 60.0)
+        pos = np.where(at_stop, 0.004, 0.06)
+        ang = np.where(at_stop, 0.75, 4.0)
+        idx = reduce_keyframes(t, cam, rot, tgt, keep=keep, tol_px=px, pos_tol=pos, ang_tol=ang,
+                               max_gap=st.max_key_gap, height=st.height)
+        return t[idx] - t0, cam[idx], rot[idx], tgt[idx]
+
     def summary(self) -> str:
         lines = [f"{'leg':40s} {'km':>8s} {'type':>6s} {'sec':>6s} {'peak v':>7s}"]
         for r in self.report:
             lines.append(f"{r['leg']:40s} {r['km']:8.0f} {r['type']:>6s} {r['sec']:6.1f} {r['peak_v']:7.3f}")
         st = sum(p.duration for p in self.pieces if p.kind == "stop")
+        nk = sum(len(self.keyframes(a, b)[0]) for a, b in self.parts())
         lines.append(f"total {self.duration:.1f}s ({self.frames} frames @ {self.settings.fps} fps) | "
                      f"stops {st:.1f}s | transits {self.duration - st:.1f}s | "
-                     f"{len(self.times)} keyframes")
+                     f"{nk} .esp keyframes in {len(self.parts())} project(s)")
         lines += [f"WARNING: {w}" for w in self.warnings]
         return "\n".join(lines)
 
@@ -306,6 +369,8 @@ class Plan:
             "duration": self.duration, "frames": self.frames,
             "stops": self.stop_windows(),
             "cuts": [p.t0 for p in self.pieces if p.kind == "cut"],
+            "parts": [{"t_start": a, "t_end": b, "frames": int(round((b - a) * self.settings.fps))}
+                      for a, b in self.parts()],
             "report": self.report,
             "samples": {"t": self.times.tolist(), "cam": self.cam.tolist(),
                         "target": self.target.tolist(), "rot": self.rot.tolist()},
@@ -342,7 +407,7 @@ def plan_flyover(stops: Sequence[Stop], settings: Optional[Settings] = None) -> 
     pieces: List[Piece] = []
     stop_pieces = []
     for i, s in enumerate(stops):
-        script = parse_moves(s.moves, settings)
+        script = parse_moves(s.moves, settings, i)
         r0, t0 = _start_values(script.segments, settings)
         start = View(s.lat, s.lon, s.elev, r0, t0, heads[i])
         stop_pieces.append(build_stop_pieces(i, s, start, settings))
@@ -375,7 +440,7 @@ def plan_flyover(stops: Sequence[Stop], settings: Optional[Settings] = None) -> 
             off = b.heading - stop_pieces[i][0].eval(0.0).heading
             if abs(off) > 1e-9:
                 s = stops[i]
-                script = parse_moves(s.moves, settings)
+                script = parse_moves(s.moves, settings, i)
                 r0, t0 = _start_values(script.segments, settings)
                 stop_pieces[i] = build_stop_pieces(i, s, View(s.lat, s.lon, s.elev, r0, t0, b.heading), settings)
         pieces.extend(stop_pieces[i])
@@ -451,7 +516,7 @@ def _fit_durations(plan: Plan):
 
 def _sample(plan: Plan):
     st = plan.settings
-    rate = st.fps if st.keyframe_every_frame else st.keyframe_rate
+    rate = st.fps if st.keyframe_every_frame else st.sample_rate
     ts = []
     for p in plan.pieces:
         if p.kind == "cut":
@@ -461,20 +526,7 @@ def _sample(plan: Plan):
         k = max(2, int(math.ceil(p.duration * rate)) + 1)
         ts += list(np.linspace(p.t0, p.t1, k))
     ts = np.unique(np.round(np.array(ts), 6))
-    cam, tgt, rot = [], [], []
-    prev_h = None
-    for t in ts:
-        v = plan.view_at(float(t))
-        clat, clon, calt = v.camera()
-        h, tl = geo.look_rotation(clat, clon, calt, v.lat, v.lon, v.elev)
-        if h is None:                       # nadir view: heading undefined, keep planned one
-            h = v.heading
-        h = geo.unwrap_to(h, prev_h if prev_h is not None else v.heading)
-        prev_h = h
-        cam.append((clat, clon, calt))
-        tgt.append((v.lat, v.lon, v.elev))
-        rot.append((h, tl))
-    plan.times, plan.cam, plan.target, plan.rot = ts, np.array(cam), np.array(tgt), np.array(rot)
+    plan.times, plan.cam, plan.target, plan.rot = plan.sample(ts)
     clearance = plan.cam[:, 2] - plan.target[:, 2]
     if clearance.min() < 150:
         plan.warnings.append(f"camera gets within {clearance.min():.0f} m of target ground level")

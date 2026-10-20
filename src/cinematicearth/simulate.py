@@ -101,6 +101,7 @@ def render_preview(esp: dict, plan, out="flyover_preview.mp4", width=640, height
                    max_seconds: Optional[float] = None, start: float = 0.0):
     """Wireframe preview: global graticule + local grid around each stop + stop markers."""
     import cv2
+    from .overlay import ffmpeg_exe
     t, cam, rot, efps, frames = tracks_from_esp(esp)
     fps = fps or efps
     T = frames / efps - start if max_seconds is None else min(frames / efps - start, max_seconds)
@@ -109,7 +110,7 @@ def render_preview(esp: dict, plan, out="flyover_preview.mp4", width=640, height
     local = [(_sphere_lines(s["lat"], s["lon"], 0.15, 0.01, s["elev"], n=31),
               _sphere_lines(s["lat"], s["lon"], 2.0, 0.1, s["elev"], n=41)) for s in stops]
     pts = np.array([geo.ecef(s["lat"], s["lon"], s["elev"]) for s in stops])
-    enc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
+    enc = subprocess.Popen([ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
                             "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-c:v", "libx264",
                             "-pix_fmt", "yuv420p", "-crf", "23", out], stdin=subprocess.PIPE)
     for k in range(int(T * fps)):

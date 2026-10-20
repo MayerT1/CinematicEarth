@@ -64,21 +64,24 @@ code("""
 # 4 | (optional) wireframe motion check of the first ~45 s, decoded from the .esp itself
 from cinematicearth.simulate import render_preview
 from IPython.display import Video
-render_preview(ce.build_esp(plan), plan, "wire.mp4", 640, 360, fps=15, max_seconds=45)
+render_preview(ce.build_esp(plan), plan, "wire.mp4", 640, 360, fps=15, max_seconds=45)   # whole timeline
 Video("wire.mp4", embed=True, width=640)
 """)
 
 code("""
 # 5 | download the Earth Studio project (+ KML tour fallback)
 from google.colab import files
-files.download("flyover.esp"); files.download("flyover.kml"); files.download("flyover.plan.json")
+for f in plan.esp_files + ["flyover.kml", "flyover.plan.json"]:
+    files.download(f)
 """)
 
 md("""
 ## In Earth Studio
-1. Go to [earth.google.com/studio](https://earth.google.com/studio/) and choose **File → Import**, then pick `flyover.esp`.
+1. Go to [earth.google.com/studio](https://earth.google.com/studio/) and choose **File → Import**, then pick `flyover_part01.esp`. Do the same for each part (`max_part_seconds: 90` keeps every project light enough for the browser).
 2. Scrub the timeline. Each city should sit at the centre of the frame while the camera circles it.
-3. Choose **Render → Advanced** for full-quality JPEG frames, which download as a `.zip`. Quick render gives an `.mp4` and works too.
+3. Choose **Render → Advanced** for full-quality JPEG frames, which download as a `.zip`. Quick render gives an `.mp4` and works too. Render every part.
+
+If an import hangs, run `!cinematicearth smoketest` and try `test_tiny.esp` (10 s) first.
 
 If Earth Studio rejects the project:
 1. In Earth Studio, export any small project as `template.esp`.
@@ -92,18 +95,18 @@ import matplotlib.pyplot as plt
 w = plan.stop_windows()[11]
 plt.figure(figsize=(12, 3.5)); plt.imshow(preview_frame(plan, w["t_start"] + 3)[..., ::-1]); plt.axis("off"); plt.show()
 
-up = files.upload()
-render = next(iter(up))
+up = files.upload()                      # select ALL part renders at once
+renders = sorted(up)                     # part01, part02, ... (name them so they sort in order)
 style = OverlayStyle(accent="#FFB000", show_coords=True, show_counter=True, attribution="Google Earth")
-annotate_video(render, "flyover.plan.json", "flyover_final.mp4", style)
+annotate_video(renders, "flyover.plan.json", "flyover_final.mp4", style)
 files.download("flyover_final.mp4")
 """)
 
 md("""
 ## The same thing from the command line
 ```bash
-cinematicearth build stops.md -o flyover.esp --speed slow --stop-duration 8
-cinematicearth annotate render.zip flyover.plan.json -o flyover_final.mp4
+cinematicearth build stops.md -o flyover.esp --speed slow --stop-duration 8 --split 90
+cinematicearth annotate flyover.plan.json part01.zip part02.zip part03.zip part04.zip part05.zip -o flyover_final.mp4
 ```
 """)
 

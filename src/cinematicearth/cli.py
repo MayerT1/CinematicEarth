@@ -3,7 +3,8 @@
     cinematicearth build stops.md -o flyover.esp --speed slow --duration 180
     cinematicearth build "Huntsville, AL; Santa Fe, NM" --geocode
     cinematicearth preview stops.md -o preview.png
-    cinematicearth annotate render.zip flyover.plan.json -o flyover_final.mp4
+    cinematicearth annotate flyover.plan.json render.zip -o flyover_final.mp4
+    cinematicearth annotate flyover.plan.json part01.zip part02.zip ...   (split projects)
     cinematicearth moves          # print the camera-move reference
     cinematicearth init stops.md  # write an example stop file
 """
@@ -34,7 +35,8 @@ tilt: 60             # 0 = straight down, 90 = horizon
 
 def _overrides(a):
     keys = ["duration", "speed", "stop_duration", "orbit", "tilt", "fps", "width", "height",
-            "range_start", "range_end", "keyframe_rate", "title", "ease"]
+            "range_start", "range_end", "title", "ease", "max_part_seconds", "keyframe_tol_px", "cut_km",
+            "direction"]
     ov = {k: getattr(a, k) for k in keys if getattr(a, k, None) is not None}
     if getattr(a, "no_intro", False):
         ov["intro"] = False
@@ -67,7 +69,11 @@ def _add_common(p):
     p.add_argument("--width", type=int)
     p.add_argument("--height", type=int)
     p.add_argument("--ease", choices=["smooth", "sine", "linear"])
-    p.add_argument("--keyframe-rate", dest="keyframe_rate", type=float)
+    p.add_argument("--split", dest="max_part_seconds", type=float,
+                   help="split into several .esp projects of at most N seconds (lighter for Earth Studio)")
+    p.add_argument("--keyframe-tol", dest="keyframe_tol_px", type=float, help="px drift allowed at stops (default 3)")
+    p.add_argument("--cut-km", dest="cut_km", type=float, help="hops longer than this become hard cuts")
+    p.add_argument("--direction", help="orbit direction: alternate | 1 | -1")
     p.add_argument("--every-frame", action="store_true", help="one keyframe per frame (big .esp)")
     p.add_argument("--title")
     p.add_argument("--no-intro", action="store_true")
@@ -92,8 +98,9 @@ def main(argv=None):
     pv.add_argument("-o", "--out", default="flyover_preview.png")
 
     an = sub.add_parser("annotate", help="burn annotations into an Earth Studio render")
-    an.add_argument("render", help="Earth Studio .zip of frames, a frame folder, or a video")
     an.add_argument("plan", help="the .plan.json written by build")
+    an.add_argument("render", nargs="+", help="Earth Studio render(s): .zip of frames, frame folder, or video; "
+                                               "one per project part, in order")
     an.add_argument("-o", "--out", default="flyover_final.mp4")
     an.add_argument("--accent", default="#FFB000")
     an.add_argument("--no-coords", action="store_true")
@@ -110,15 +117,19 @@ def main(argv=None):
     sm.add_argument("--start", type=float, default=0.0)
     sm.add_argument("--seconds", type=float)
 
+    sk = sub.add_parser("smoketest", help="write a tiny 10 s one-city .esp to check Earth Studio import")
+    sk.add_argument("-o", "--out", default="test_tiny.esp")
+
     sub.add_parser("moves", help="print the camera-move reference")
     ini = sub.add_parser("init", help="write an example stops file")
     ini.add_argument("path", nargs="?", default="stops.md")
 
     a = ap.parse_args(argv)
     if a.cmd == "build":
-        _build(_source(a.source), out=a.out, kml=not a.no_kml, template=a.template,
-               geocode=a.geocode, elevation=a.elevation, **_overrides(a))
-        print(f"wrote {a.out}")
+        plan = _build(_source(a.source), out=a.out, kml=not a.no_kml, template=a.template,
+                      geocode=a.geocode, elevation=a.elevation, **_overrides(a))
+        for f in plan.esp_files:
+            print(f"wrote {f}")
     elif a.cmd == "preview":
         from .preview import plot_plan
         settings, stops = load(_source(a.source), **_overrides(a))
@@ -133,7 +144,7 @@ def main(argv=None):
         from .overlay import annotate_video, OverlayStyle
         st = OverlayStyle(accent=a.accent, show_coords=not a.no_coords, show_counter=not a.no_counter,
                           attribution=a.attribution)
-        annotate_video(a.render, a.plan, a.out, st)
+        annotate_video(a.render if len(a.render) > 1 else a.render[0], a.plan, a.out, st)
         print(f"wrote {a.out}")
     elif a.cmd == "simulate":
         import json
@@ -142,6 +153,11 @@ def main(argv=None):
             esp = json.load(f)
         render_preview(esp, PlanWindows(a.plan), a.out, a.width, a.height, a.fps, a.seconds, a.start)
         print(f"wrote {a.out}")
+    elif a.cmd == "smoketest":
+        plan = _build("- Huntsville, AL | 34.7304, -86.5861, 190 | orbit 45 + zoom 7km>3.5km @10s",
+                      out=a.out, kml=False, plan_json=False, intro=False, outro=False, verbose=False,
+                      title="CinematicEarth smoke test")
+        print(f"wrote {a.out}: {plan.frames} frames, {len(plan.keyframes()[0])} keyframes")
     elif a.cmd == "moves":
         from . import model
         src = model.__file__

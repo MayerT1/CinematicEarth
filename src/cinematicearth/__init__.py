@@ -15,7 +15,7 @@ from .planner import plan_flyover, Plan
 from .esp import build_esp, write_esp, decode_tracks
 from .kml import build_kml, write_kml
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 __all__ = ["Settings", "Stop", "Plan", "load", "plan_flyover", "build", "write_esp", "write_kml",
            "build_esp", "decode_tracks", "parse_moves", "SPEED_PRESETS", "__version__"]
 
@@ -32,8 +32,9 @@ def build(source, out: Optional[str] = "flyover.esp", kml: bool = True, plan_jso
         from .geocode import resolve
         resolve(stops, need_coords=geocode, need_elev=elevation, verbose=verbose)
     plan = plan_flyover(stops, settings)
+    plan.esp_files = []
     if out:
-        write_esp(plan, out, template)
+        plan.esp_files = write_esp(plan, out, template)
         base = os.path.splitext(out)[0]
         if kml:
             write_kml(plan, base + ".kml")

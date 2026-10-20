@@ -33,14 +33,26 @@ class OverlayStyle:
     notes: Dict[str, str] = field(default_factory=dict)
 
 
-def _deps():
+def ffmpeg_exe() -> str:
+    """ffmpeg on PATH, else the binary bundled with imageio-ffmpeg (pip install CinematicEarth[video])."""
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        raise RuntimeError("ffmpeg not found: pip install imageio-ffmpeg (or install ffmpeg and add it to PATH)")
+
+
+def _deps(need_ffmpeg=True):
     try:
         import cv2  # noqa
         from PIL import Image, ImageDraw, ImageFont  # noqa
     except ImportError as e:
         raise ImportError("overlay needs: pip install 'CinematicEarth[video]'") from e
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg not found on PATH")
+    if need_ffmpeg:
+        ffmpeg_exe()
 
 
 def _font_path(style, bold):
@@ -219,20 +231,14 @@ def _plan_dict(plan):
 
 def preview_frame(plan, t, width=1920, height=1080, style: Optional[OverlayStyle] = None):
     """Annotation over a grey frame at time t (BGR array)."""
-    _deps()
+    _deps(need_ffmpeg=False)
     pd = _plan_dict(plan)
     fr = np.full((height, width, 3), 90, np.uint8)
     return Annotator(pd["stops"], height, style or OverlayStyle())(fr, t)
 
 
-def annotate_video(render, plan, out="flyover_final.mp4", style: Optional[OverlayStyle] = None,
-                   crf=18, progress=True):
-    """render: Earth Studio .zip of JPEGs, a folder of frames, or a video file."""
-    _deps()
+def _open_render(render):
     import cv2
-    style = style or OverlayStyle()
-    pd = _plan_dict(plan)
-    fps, duration = pd["settings"]["fps"], pd["duration"]
     tmp = None
     if os.path.isdir(render) or str(render).lower().endswith(".zip"):
         if str(render).lower().endswith(".zip"):
@@ -244,42 +250,68 @@ def annotate_video(render, plan, out="flyover_final.mp4", style: Optional[Overla
         frames = sorted(glob.glob(os.path.join(root, "**", "*.jp*g"), recursive=True) +
                         glob.glob(os.path.join(root, "**", "*.png"), recursive=True))
         if not frames:
-            raise ValueError("no frames found")
+            raise ValueError(f"no frames found in {render}")
         H, W = cv2.imread(frames[0]).shape[:2]
-        n = len(frames)
-        reader = (cv2.imread(p) for p in frames)
-    else:
-        info = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
-                               "-show_entries", "stream=width,height,nb_read_packets", "-of", "csv=p=0", render],
-                              capture_output=True, text=True).stdout.strip().split(",")
-        W, H, n = int(info[0]), int(info[1]), int(info[2])
-        dec = subprocess.Popen(["ffmpeg", "-loglevel", "error", "-i", render, "-f", "rawvideo",
-                                "-pix_fmt", "bgr24", "-"], stdout=subprocess.PIPE)
+        return W, H, len(frames), (cv2.imread(p) for p in frames), tmp
+    cap = cv2.VideoCapture(str(render))
+    if not cap.isOpened():
+        raise ValueError(f"cannot open video {render}")
+    W, H = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        def gen():
-            while True:
-                b = dec.stdout.read(W * H * 3)
-                if len(b) < W * H * 3:
-                    return
-                yield np.frombuffer(b, np.uint8).reshape(H, W, 3).copy()
-        reader = gen()
-    dt = duration / n if abs(n - round(duration * fps)) > 2 else 1 / fps
-    ann = Annotator(pd["stops"], H, style, pd.get("cuts", []))
-    enc = subprocess.Popen(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
-                            "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                            "-crf", str(crf), "-preset", "medium", "-movflags", "+faststart", out],
-                           stdin=subprocess.PIPE)
-    it = reader
-    if progress:
-        try:
-            from tqdm.auto import tqdm
-            it = tqdm(reader, total=n, desc="annotate")
-        except ImportError:
-            pass
-    for k, fr in enumerate(it):
-        enc.stdin.write(ann(fr, k * dt).tobytes())
+    def gen():
+        while True:
+            ok, fr = cap.read()
+            if not ok:
+                cap.release()
+                return
+            yield fr
+    return W, H, n, gen(), None
+
+
+def annotate_video(render, plan, out="flyover_final.mp4", style: Optional[OverlayStyle] = None,
+                   crf=18, progress=True):
+    """render: an Earth Studio .zip of frames, a frame folder, or a video file; or a LIST of
+    those, one per project part (in order), which are joined into one annotated MP4."""
+    _deps()
+    style = style or OverlayStyle()
+    pd = _plan_dict(plan)
+    fps = pd["settings"]["fps"]
+    renders = list(render) if isinstance(render, (list, tuple)) else [render]
+    parts = pd.get("parts") or [{"t_start": 0.0, "t_end": pd["duration"], "frames": pd["frames"]}]
+    if len(renders) != len(parts):
+        print(f"note: {len(renders)} render(s) for {len(parts)} project part(s); joining in order")
+    enc = ann = None
+    t_off = 0.0
+    for k, r in enumerate(renders):
+        W, H, n, reader, tmp = _open_render(r)
+        if k < len(parts) and len(renders) == len(parts):
+            t0, span = parts[k]["t_start"], parts[k]["t_end"] - parts[k]["t_start"]
+        else:
+            t0, span = t_off, n / fps
+        dt = span / n if abs(n - round(span * fps)) > 2 else 1 / fps
+        if enc is None:
+            ann = Annotator(pd["stops"], H, style, pd.get("cuts", []))
+            enc = subprocess.Popen([ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24",
+                                    "-s", f"{W}x{H}", "-r", str(fps), "-i", "-", "-c:v", "libx264",
+                                    "-pix_fmt", "yuv420p", "-crf", str(crf), "-preset", "medium",
+                                    "-movflags", "+faststart", out], stdin=subprocess.PIPE)
+            size = (W, H)
+        it = reader
+        if progress:
+            try:
+                from tqdm.auto import tqdm
+                it = tqdm(reader, total=n, desc=f"annotate {k + 1}/{len(renders)}")
+            except ImportError:
+                pass
+        import cv2
+        for i, fr in enumerate(it):
+            if (fr.shape[1], fr.shape[0]) != size:
+                fr = cv2.resize(fr, size)
+            enc.stdin.write(ann(fr, t0 + i * dt).tobytes())
+        t_off = t0 + n * dt
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
     enc.stdin.close()
     enc.wait()
-    if tmp:
-        shutil.rmtree(tmp, ignore_errors=True)
     return out
