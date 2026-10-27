@@ -15,7 +15,7 @@ from .planner import plan_flyover, Plan
 from .esp import build_esp, write_esp, decode_tracks
 from .kml import build_kml, write_kml
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = ["Settings", "Stop", "Plan", "load", "plan_flyover", "build", "write_esp", "write_kml",
            "build_esp", "decode_tracks", "parse_moves", "SPEED_PRESETS", "__version__"]
 

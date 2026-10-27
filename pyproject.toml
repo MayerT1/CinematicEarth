@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "CinematicEarth"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves -> .esp project, KML tour, annotated MP4"
 readme = "README.md"
 requires-python = ">=3.9"
