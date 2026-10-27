@@ -1,169 +1,383 @@
 # CinematicEarth
 
-[![PyPI](https://img.shields.io/pypi/v/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![tests](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml/badge.svg)](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
+[![PyPI](https://img.shields.io/pypi/v/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![Python](https://img.shields.io/pypi/pyversions/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![tests](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml/badge.svg)](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
 
-Cinematic multi-stop flyovers for **Google Earth Studio**. You give it a list of stops (and, if you want, camera moves per stop). It writes:
+**Turn a list of places into a cinematic Google Earth Studio flyover.**
 
-- **`.esp`**: an Earth Studio project. Open it, check it, render.
-- **`.kml`**: the same camera path as a Google Earth Pro tour (fallback renderer).
-- **`.plan.json`**: timing for each stop, used to burn animated **annotations** into the render.
+Write your stops in a short text file and run one command. You get a Google Earth Studio project where the camera:
 
-What the camera does:
+- slowly circles each place in a tilted 3D view, pulling in as it goes;
+- glides low between nearby places;
+- arcs up toward space between distant ones.
 
-- **At each city:** a slow, tilted orbit (default **45°** over 8 s) that pulls in from 7 km to 3.5 km. Pan and tilt are computed per keyframe, so **the city is locked to screen centre** (< 1 px drift in tests).
-- **Between nearby cities:** a low, forward-looking glide.
-- **Between distant cities:** a smooth arc up toward space and a dive back into the tilted view.
-- **Pacing:** every hop's duration comes from a cap on *perceived screen speed*, so nothing rockets across the map.
+Render the project in Earth Studio, then run one more command. You get an MP4 with an animated label for every place.
 
 ```text
-stops.md ──► cinematicearth build ──► flyover.esp ──► Earth Studio render (.zip / .mp4)
-                                  ├► flyover.kml                │
-                                  └► flyover.plan.json ──► cinematicearth annotate ──► flyover_final.mp4
+ stops.md ──► cinematicearth build ──► flyover_part01.esp … ──► Google Earth Studio ──► rendered frames
+                                      └► flyover.plan.json ───────────────────────────┐        │
+                                                                                      ▼        ▼
+                                                                         cinematicearth annotate ──► flyover_final.mp4
 ```
 
-## Install
+---
+
+## Contents
+
+1. [Install](#1-install)
+2. [Your first flyover (5 minutes)](#2-your-first-flyover-5-minutes)
+3. [Rendering in Google Earth Studio](#3-rendering-in-google-earth-studio)
+4. [Adding the annotations](#4-adding-the-annotations)
+5. [Writing a stop list](#5-writing-a-stop-list)
+6. [Camera moves](#6-camera-moves)
+7. [Pacing and length](#7-pacing-and-length)
+8. [All settings](#8-all-settings)
+9. [Command reference](#9-command-reference)
+10. [Python API](#10-python-api)
+11. [Google Colab](#11-google-colab)
+12. [Troubleshooting](#12-troubleshooting)
+13. [How it works](#13-how-it-works)
+
+---
+
+## 1. Install
 
 ```bash
-pip install "CinematicEarth[all]"        # everything: plots, YAML, annotated video (bundled ffmpeg)
-pip install CinematicEarth               # core only (numpy): build .esp / .kml
-pip install "git+https://github.com/MayerT1/CinematicEarth.git"   # latest from GitHub
-# local dev:                   pip install -e ".[dev]"
+pip install "CinematicEarth[all]"
 ```
 
-The `annotate` and `simulate` commands use `ffmpeg` from your PATH, or the copy bundled with `imageio-ffmpeg`, which the `[video]`, `[all]` and `[dev]` extras install. That means it works on Windows without installing ffmpeg separately.
+| Install | What you get |
+|---|---|
+| `pip install CinematicEarth` | Core only (needs only numpy): build `.esp` / `.kml` projects |
+| `pip install "CinematicEarth[all]"` | Plus preview plots, YAML input, and annotated video (ffmpeg bundled) |
+| `pip install "git+https://github.com/MayerT1/CinematicEarth.git"` | Latest development version |
 
-## Quick start
+It needs Python 3.9 or newer and runs on Windows, macOS, Linux and Colab. Check the install with:
 
 ```bash
-cinematicearth init stops.md                       # example file
-cinematicearth build stops.md -o flyover.esp       # + flyover.kml, flyover.plan.json
-cinematicearth build examples/stops_18.md --speed medium --stop-duration 6
-cinematicearth build "Huntsville, AL; Santa Fe, NM; Kathmandu" --geocode --elevation
-cinematicearth preview stops.md -o preview.png     # ground track / altitude / pacing plots
-cinematicearth simulate flyover.esp flyover.plan.json -o wire.mp4   # wireframe motion check
-cinematicearth annotate flyover.plan.json render.zip -o flyover_final.mp4
-cinematicearth smoketest                         # tiny 10 s .esp to check Earth Studio import
-cinematicearth moves                               # camera-move reference
+cinematicearth --version
 ```
 
-```python
-import cinematicearth as ce
-plan = ce.build("examples/stops_18.md", out="flyover.esp", speed="slow", stop_duration=8)
-print(plan.summary())
+You also need a Google account to use **[Google Earth Studio](https://earth.google.com/studio/)** in Chrome. It's free, but you have to sign up first.
 
-# or straight from Python
-plan = ce.build([
-    {"name": "Huntsville, AL", "lat": 34.7304, "lon": -86.5861, "elev": 190, "moves": "orbit 60 + zoom 8km>3km"},
-    ("Santa Fe, NM", 35.6870, -105.9378, 2130),
-], out="two.esp", duration=60)
-```
+---
 
-## Stop files
+## 2. Your first flyover (5 minutes)
 
-Markdown with optional front matter for settings. Each stop is one list line, `name | lat, lon[, elev] | moves | key=value`:
+**Step 1: write a stop list.** Save this as `stops.md`:
 
 ```markdown
 ---
-title: EarthRISE flyover
-speed: slow          # glacial | slow | medium | fast | number
+title: My first flyover
+speed: slow
 stop_duration: 8
-orbit: 45
-tilt: 60
-# duration: 240      # force a total length; transits get re-paced to fit
+max_part_seconds: 90
 ---
-- Huntsville, AL | 34.7304, -86.5861, 190 | orbit 60 + zoom 8km>3km; hold 1s | note=NASA EarthRISE / UAH
-- Santa Fe, NM   | 35.6870, -105.9378, 2130
-- Kathmandu, Nepal                       # no coords -> needs --geocode
+- Huntsville, AL     | 34.7304, -86.5861, 190
+- Santa Fe, NM       | 35.6870, -105.9378, 2130
+- Fort Collins, CO   | 40.5853, -105.0844, 1525
 ```
 
-Other accepted inputs:
+Each line is `name | latitude, longitude, ground elevation in metres`. Or let the tool write an example for you with `cinematicearth init stops.md`.
 
-- A Markdown pipe table (`| name | lat | lon | elev | duration | moves | transit | note |`)
-- `.csv` with the same columns
-- `.json` / `.yaml` (`{"settings": {...}, "stops": [...]}`)
-- `.txt` with one stop per line
-- An inline string `"A; B; C"`
-- A Python list
+**Step 2: build the project.**
 
-Per-stop keys:
+```bash
+cinematicearth build stops.md -o flyover.esp
+```
 
-| key | meaning |
+It prints a table of each flight between stops and the total length. It writes:
+
+| File | What it is |
 |---|---|
-| `elev` | ground elevation (m) of the city. Keeps the camera height right in Santa Fe, Thimphu and other high places. Use `--elevation` to fetch it. |
-| `duration` | seconds at this stop (overrides `stop_duration`) |
-| `transit` | how to **arrive** here: `auto` / `glide` / `hop` / `cut` |
-| `heading` | start pan direction (default: the direction of travel) |
-| `label` | on-screen title |
-| `note` | extra annotation line |
+| `flyover.esp`, or `flyover_part01.esp`, `flyover_part02.esp` … | Earth Studio project(s) |
+| `flyover.kml` | The same flight as a Google Earth Pro tour (backup option) |
+| `flyover.plan.json` | Timing of each stop, used later to add the annotations |
 
-## Camera moves
+**Step 3: check the path (optional).**
 
-Segments are separated by `;` and run one after another. Moves joined by `+` run at the same time. A segment can take a duration (`@6s`). Untimed segments share whatever is left of the stop's duration.
+```bash
+cinematicearth preview stops.md -o preview.png
+```
 
-| move | effect |
+This draws the ground track, the camera height over time, and the on-screen speed.
+
+**Step 4: render in Earth Studio** (next section), then **add annotations** (section 4).
+
+---
+
+## 3. Rendering in Google Earth Studio
+
+1. Open **https://earth.google.com/studio/** in Chrome and sign in.
+2. **File → Import** (or drag the file onto the page) and choose `flyover_part01.esp`.
+3. Press play or scrub the timeline. Each place should stay in the middle of the frame while the camera circles it.
+4. Click **Render** and choose:
+   - **Advanced**: full-quality JPEG frames, downloaded as a `.zip`. Recommended.
+   - **Quick**: an `.mp4` straight away, at lower quality.
+5. Repeat for `flyover_part02.esp`, `part03` and so on. Name the downloads so they sort in order, for example `part01.zip`, `part02.zip`.
+
+> **Why parts?** Earth Studio runs inside a browser tab, and very long or keyframe-heavy projects can freeze or crash Chrome. `max_part_seconds: 90` (or `--split 90`) cuts the flyover into projects of about 90 s. Each cut falls at the end of a stop, where the camera is momentarily still, so the parts join seamlessly in the final video.
+
+---
+
+## 4. Adding the annotations
+
+```bash
+cinematicearth annotate flyover.plan.json part01.zip part02.zip part03.zip -o flyover_final.mp4
+```
+
+The plan file comes first, then each render in order. A render can be a `.zip` of frames, a folder of frames, or an `.mp4`. The result is one joined video. While the camera circles each place, the video shows:
+
+- a pulsing pin on the place, with a line to a label card;
+- the stop number (`07 / 18`), place name, region, coordinates, and an optional note;
+- the **Google Earth** credit in the corner.
+
+Earth Studio's terms require that credit on anything you publish. You can turn it off with `--attribution ""`, but only if your render already has the credit burned in.
+
+| Option | Effect |
 |---|---|
-| `orbit 45` (`pan`, `circle`, `spin`) | circle the city 45°. Negative = the other direction |
-| `zoom 8km>3km`, `zoom 2.5km`, `zoom in/out` | change the LookAt range (pull in / push out) |
-| `tilt 55>70` | change the tilt (0 = straight down, 90 = horizon) |
-| `truck 2km` (`flyby`, `slide`) | slide the camera sideways past the city, keeping it centred (parallax flyby) |
-| `rise 1km` (`crane`) | raise or lower the camera, keeping the city centred |
-| `hold` | no motion |
-| `slow 1.5` / `fast 2` | stretch or shrink this stop's time |
+| `--accent "#00C2FF"` | Colour of the pin, card bar and stop counter |
+| `--no-coords` | Hide coordinates |
+| `--no-counter` | Hide the `07 / 18` counter |
+| `--attribution "Google Earth"` | Credit text in the corner |
 
-Example: `orbit 30 + zoom 9km>5km @5s; orbit 30 + tilt 60>72 + zoom 2.5km; hold 1s`
+---
 
-## Pacing (the "not too fast" part)
+## 5. Writing a stop list
 
-Each transit is reparameterised by perceived on-screen motion: sideways ground motion relative to range, zoom rate, pan rate and tilt rate. Its duration is then set so the **peak** never goes above `speed`.
+### Markdown (recommended)
 
-| preset | 18-stop example |
+```markdown
+---
+title: Partner sites           # settings go here (see section 8)
+speed: slow
+stop_duration: 8
+orbit: 45
+max_part_seconds: 90
+---
+
+# Anything that isn't a list item is ignored, so notes and headings are fine.
+# The last stop has no coordinates, so build this one with --geocode.
+
+- Huntsville, AL   | 34.7304, -86.5861, 190  | orbit 60 + zoom 8km>3km; hold 1s | note=NASA EarthRISE
+- Santa Fe, NM     | 35.6870, -105.9378, 2130 | duration=10
+- Kathmandu, Nepal | 27.7172, 85.3240, 1400   | label=Kathmandu Valley
+- Enschede, Netherlands
+```
+
+Each line has up to four parts, separated by ` | ` (a space on each side of the bar):
+
+1. **Name** (required). It's also the on-screen title. Text after a comma becomes the region line on the card.
+2. **`lat, lon[, elev]`**: decimal degrees, plus the ground elevation in metres.
+3. **Camera moves** (optional, see section 6).
+4. **`key=value` options**:
+
+| Key | Meaning |
 |---|---|
-| `glacial` | ~8.5 min |
-| `slow` | ~6.5 min (default) |
-| `medium` | ~5 min |
-| `fast` | ~4.3 min |
+| `elev=` | Ground elevation in metres. Matters in high places (Santa Fe, Thimphu, Denver…) so the camera height is right. |
+| `duration=` | Seconds at this stop (overrides `stop_duration`) |
+| `transit=` | How to arrive here: `auto`, `glide`, `hop` or `cut` |
+| `heading=` | Compass direction to start the orbit from (default: the direction of travel) |
+| `label=` | Different on-screen title |
+| `note=` | Extra highlighted line on the card |
 
-If you set `duration`, all transits share the remaining time at the same speed, so no single hop is singled out to be rushed. You get a warning if that forces them past the preset.
+**Missing coordinates or elevations?** Add `--geocode`, `--elevation` or both. Coordinates are looked up with OpenStreetMap Nominatim and elevations with Open-Meteo. Both need internet access, and the results are cached.
 
-For a short cut of many far-apart stops, use `cut_km: 5000`: long hops become hard cuts, and `annotate` adds a dip to black. The 18-stop example with `speed: medium`, `stop_duration: 6` and `cut_km: 5000` runs about 4 min.
+```bash
+cinematicearth build "Huntsville, AL; Santa Fe, NM; Thimphu, Bhutan" --geocode --elevation -o trip.esp
+```
 
-## Earth Studio workflow
+### Other formats
 
-1. `cinematicearth build stops.md --split 90`. This writes `flyover_part01.esp`, `flyover_part02.esp` and so on, each about 90 s with about 130 keyframes.
-2. Earth Studio: **File → Import** each part, scrub the timeline to check it, then **Render**. Advanced render gives JPEG frames as a `.zip`.
-3. `cinematicearth annotate flyover.plan.json part01.zip part02.zip ...` joins the parts into one annotated MP4.
+| Format | Example |
+|---|---|
+| Markdown table | `\| name \| lat \| lon \| elev \| moves \| note \|` with one row per stop |
+| CSV | columns `name,lat,lon,elev,duration,moves,transit,heading,label,note` |
+| JSON / YAML | `{"settings": {...}, "stops": [{"name": ..., "lat": ..., "lon": ...}]}` |
+| Plain text | one stop per line, same `name \| lat, lon` format |
+| Inline | `cinematicearth build "Place A \| 10, 20; Place B \| 11, 21"` |
 
-Parts are split at the end of a stop, where the camera is momentarily still, so they join seamlessly.
+---
 
-**Keep projects light.** A browser tab running Earth Studio can hang or crash on very large projects. Version 0.1.0 wrote about 2,400 keyframes per track over 6.5 min, and Chrome crashed on import.
+## 6. Camera moves
 
-The planner now samples the camera densely, then keeps only the keyframes Earth Studio needs for its own linear interpolation to reproduce the path:
-- **At stops:** the city stays within 3 px of screen centre (`--keyframe-tol`).
-- **In transit:** looser limits, since nothing is pinned to the centre there.
+By default every stop gets `orbit 45 + zoom 7km>3.5km`: a 45° circle around the place that pulls in from 7 km to 3.5 km over `stop_duration` seconds. Orbit direction alternates between stops. To customise a stop, write a move script in its third field.
 
-If an import still hangs, run `cinematicearth smoketest` and import `test_tiny.esp`. It's 10 s with 15 keyframes. If that works, use a smaller `--split`. If it doesn't, use the template route below.
+| Move | Also accepts | What it does |
+|---|---|---|
+| `orbit 45` | `pan`, `circle`, `spin` | Circle the place by 45°. A negative value circles the other way. |
+| `zoom 8km>3km` | `range`, `dolly`, `push` | Change the distance to the place, from 8 km to 3 km. `zoom 3km` starts from the current distance. `zoom in` halves the distance and `zoom out` doubles it. |
+| `tilt 55>70` | `pitch` | Change the camera tilt. 0 looks straight down; 90 looks at the horizon. |
+| `truck 3km` | `flyby`, `slide` | Slide the camera sideways past the place while staying locked on it, for a parallax flyby. Negative slides left. |
+| `rise 1km` | `crane`, `lift` | Raise the camera, or lower it with a negative value, while staying locked on the place. |
+| `hold` | `pause`, `wait` | Stay still. |
+| `slow 1.5` / `fast 2` | | Stretch or shrink this stop's time. |
 
-You need to credit **Google Earth** on screen when you publish Earth Studio footage. `annotate` adds the credit by default. Turn it off with `--attribution ""`.
+**Combining moves:**
 
-If Earth Studio ever refuses the generated project, use one it made itself:
+- `+` runs moves **together**: `orbit 60 + zoom 9km>3km`
+- `;` runs them **one after another**: `orbit 30; hold 1s`
+- `@5s` (or `5s`) sets a segment's duration. Segments without a time share what's left of the stop.
 
-1. Export any small project from your Earth Studio as `template.esp`.
-2. Run `cinematicearth build stops.md --template template.esp`.
+**Recipes:**
 
-The camera tracks are written into your file's own structure, keeping everything else in it.
+```text
+orbit 45 + zoom 7km>3.5km                         # default slow pull-in orbit
+orbit 90 + zoom 10km>4km @12s                     # long, wide reveal
+orbit 30 + tilt 50>70 + zoom 8km>3km              # orbit while the horizon rises into view
+truck 3km + zoom 6km>4km @5s; orbit 30            # side flyby, then settle into an orbit
+tilt 20>65 + zoom 20km>5km @6s; orbit 45          # drop in from above, then circle
+orbit 60 + zoom 8km>3km; hold 1.5s                # orbit, then pause for the title card
+rise 2km + orbit -40                              # crane up while circling the other way
+slow 2                                            # default move at half speed
+```
 
-## How the .esp is written
+To see this reference in the terminal, run `cinematicearth moves`.
 
-Earth Studio's project format isn't documented. The encodings here match a real Earth Studio export (`modelVersion` 17) as reverse-engineered by [mkatzef/google-studio-utils](https://github.com/mkatzef/google-studio-utils):
+---
 
-- Keyframe time is a fraction of the project duration.
-- Longitude and latitude are normalised from a `minValueRange`.
-- Altitude is `m × 1.5357e-8`.
-- `rotationX` (pan / compass heading) is normalised to `minValueRange`..`maxValueRange`.
-- `rotationY` (tilt) is `deg / 180`.
+## 7. Pacing and length
 
-Pan and tilt are written for every keyframe. Keyframes are error-bounded and reduced (see `cinematicearth/keyframes.py`). Pan is re-centred per project to stay within about ±200°, and orbit direction alternates between stops by default (`direction: alternate`). Camera Target is left off, so nothing depends on how target influence behaves.
+Between stops, the time each flight takes is calculated, not fixed. It's set from a cap on **perceived on-screen speed**, which combines:
 
-## License
+- how fast the ground slides across the frame;
+- how fast the view zooms;
+- how fast it pans and tilts.
 
-MIT
+No flight can whip across the map, however far apart the places are.
+
+| `speed` | Feel | 18-stop example |
+|---|---|---|
+| `glacial` | very slow, documentary | ~8.5 min |
+| `slow` (default) | relaxed and cinematic | ~6.5 min |
+| `medium` | brisk | ~5 min |
+| `fast` | quick, still smooth | ~4.3 min |
+
+Other controls:
+
+- **`duration: 180`**: forces a total length. All flights share the remaining time evenly, and you get a warning if that makes them faster than your `speed` preset.
+- **`stop_duration`** or per-stop `duration=`: time spent circling each place.
+- **`cut_km: 5000`**: flights longer than this become **hard cuts** instead of flying across an ocean. `annotate` adds a short dip to black. The 18-stop example with `speed: medium`, `stop_duration: 6` and `cut_km: 5000` runs about 4 min.
+- **`glide_km: 150`**: flights shorter than this stay low ("glide"); longer ones arc up ("hop").
+
+---
+
+## 8. All settings
+
+Put settings in the stop file's front matter, pass them as command-line flags, or pass them as Python keyword arguments.
+
+| Setting | Default | CLI flag | Meaning |
+|---|---|---|---|
+| `title` | `CinematicEarth flyover` | `--title` | Project name |
+| `fps` | `30` | `--fps` | Frames per second |
+| `width` / `height` | `1920` / `1080` | `--width` / `--height` | Render size |
+| `duration` | auto | `--duration` | Force total seconds |
+| `speed` | `slow` | `--speed` | `glacial` / `slow` / `medium` / `fast` / a number |
+| `stop_duration` | `8` | `--stop-duration` | Seconds at each place |
+| `orbit` | `45` | `--orbit` | Default orbit, in degrees |
+| `tilt` | `60` | `--tilt` | Default tilt at places (0 = down, 90 = horizon) |
+| `range_start` / `range_end` | `7000` / `3500` | `--range-start` / `--range-end` | Default pull-in distance, in metres |
+| `direction` | `alternate` | `--direction` | Orbit direction: `alternate`, `1` (clockwise) or `-1` |
+| `ease` | `smooth` | `--ease` | Acceleration curve: `smooth`, `sine` or `linear` |
+| `intro` / `outro` | `true` | `--no-intro` / `--no-outro` | Descend from space at the start / pull back out at the end |
+| `glide_km` | `150` | | Below this distance, fly low |
+| `cut_km` | off | `--cut-km` | Above this distance, hard cut |
+| `max_part_seconds` | off | `--split` | Split into Earth Studio projects of at most this length (90 recommended) |
+| `keyframe_tol_px` | `3` | `--keyframe-tol` | How far (px) a place may drift from centre between keyframes |
+| `glide_tilt`, `hop_tilt`, `hop_apex`, `glide_apex`, `space_range`, `min_leg`, `max_key_gap`, `sample_rate` | | | Advanced flight shape and keyframe settings |
+
+---
+
+## 9. Command reference
+
+```bash
+cinematicearth init stops.md                         # write an example stop list
+cinematicearth build stops.md -o flyover.esp         # make the Earth Studio project(s) + .kml + .plan.json
+cinematicearth build stops.md --split 90 --speed medium --stop-duration 6
+cinematicearth build stops.md --template my_export.esp   # write into a project Earth Studio exported
+cinematicearth preview stops.md -o preview.png       # path / height / speed plots
+cinematicearth simulate flyover_part01.esp flyover.plan.json -o wire.mp4   # wireframe motion preview
+cinematicearth annotate flyover.plan.json part01.zip part02.zip -o final.mp4
+cinematicearth smoketest                             # tiny 10 s test project for Earth Studio
+cinematicearth moves                                 # camera-move reference
+cinematicearth <command> --help                      # all options
+```
+
+---
+
+## 10. Python API
+
+```python
+import cinematicearth as ce
+
+# from a file (any format); keyword arguments override the file's settings
+plan = ce.build("stops.md", out="flyover.esp", speed="slow", max_part_seconds=90)
+print(plan.summary())        # flight table + total length
+print(plan.esp_files)        # ['flyover_part01.esp', ...]
+
+# straight from Python
+plan = ce.build([
+    {"name": "Huntsville, AL", "lat": 34.7304, "lon": -86.5861, "elev": 190,
+     "moves": "orbit 60 + zoom 8km>3km", "note": "NASA EarthRISE"},
+    ("Santa Fe, NM", 35.6870, -105.9378, 2130),
+], out="two.esp", duration=60)
+
+# plan without writing files
+settings, stops = ce.load("stops.md", speed="medium")
+plan = ce.plan_flyover(stops, settings)
+plan.stop_windows()          # when each stop starts and ends (seconds)
+
+# preview and annotate
+from cinematicearth.preview import plot_plan
+plot_plan(plan)
+
+from cinematicearth.overlay import annotate_video, OverlayStyle
+annotate_video(["part01.zip", "part02.zip"], "flyover.plan.json", "final.mp4",
+               OverlayStyle(accent="#00C2FF", notes={"Santa Fe, NM": "Field campaign 2026"}))
+```
+
+---
+
+## 11. Google Colab
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
+
+The notebook walks through the full 18-stop example:
+
+1. Install.
+2. Edit the stop list.
+3. Build and preview the path.
+4. Watch a wireframe preview of the motion.
+5. Download the projects.
+6. Upload your Earth Studio renders.
+7. Download the annotated MP4.
+
+---
+
+## 12. Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| **Chrome goes black or freezes after importing** | The project is too heavy. Use `--split 90`, or go smaller with `--split 45`. Run `cinematicearth smoketest` and import `test_tiny.esp` (10 s): if even that fails, use the template route in the next row. |
+| **Earth Studio won't open the file** | In Earth Studio, make any small project and export it (**File → Export**) as `my_export.esp`. Then run `cinematicearth build stops.md --template my_export.esp`. The camera path is written into Earth Studio's own file. |
+| **The place drifts off centre, or the camera dips into terrain** | Give the stop its ground elevation (`elev=` or `--elevation`). |
+| **Too fast / too slow** | Change `speed`, `stop_duration` and `orbit`, or use `cut_km` for very long flights. Check with `cinematicearth preview`. |
+| **Labels appear at the wrong time** | Pass the renders to `annotate` in the right order, one per part, together with the `.plan.json` from the same build. |
+| **`ffmpeg not found`** | `pip install "CinematicEarth[video]"` (it includes a bundled ffmpeg). |
+| **Want Google Earth Pro instead** | Open `flyover.kml`, double-click the tour, and record it with **Tools → Movie Maker**. |
+
+---
+
+## 13. How it works
+
+- **Locked-on camera.** Every moment is planned as "look at this point from this distance, tilt and direction". Each keyframe's camera position, pan and tilt are computed so the camera points exactly at the place. In tests, the place stays within 3 px of centre at every frame (`keyframe_tol_px`), even with Earth Studio interpolating between keyframes.
+- **Paced flights.** Flights are reshaped so on-screen speed rises and falls smoothly and never passes the `speed` cap.
+- **Light projects.** The path is sampled densely, then reduced to the fewest keyframes that keep the error within tolerance: tight at stops, looser in flight. The 18-stop example uses about 660 keyframes in total, or about 130 per 90 s part.
+- **The `.esp` format.** Earth Studio's project format isn't documented. CinematicEarth follows the structure of a real Earth Studio export, as worked out by [mkatzef/google-studio-utils](https://github.com/mkatzef/google-studio-utils).
+
+---
+
+## Credits and license
+
+Built by Tim Mayer (NASA EarthRISE, University of Alabama in Huntsville). MIT License.
+
+Google Earth Studio imagery is © Google and its data providers. Credit **Google Earth** on screen when you publish footage; see the [Earth Studio terms](https://earth.google.com/studio/docs/) for details.
