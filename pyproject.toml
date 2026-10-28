@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "CinematicEarth"
-version = "0.3.0"
+version = "0.3.1"
 description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves + GeoTIFF products (2D/3D KML) -> .esp project, KML tour, annotated MP4"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,6 +44,7 @@ cinematicearth = "cinematicearth.cli:main"
 Homepage = "https://github.com/MayerT1/CinematicEarth"
 Repository = "https://github.com/MayerT1/CinematicEarth"
 Issues = "https://github.com/MayerT1/CinematicEarth/issues"
+DOI = "https://doi.org/10.5281/zenodo.23746921"
 Colab = "https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb"
 
 [tool.setuptools.packages.find]

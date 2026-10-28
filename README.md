@@ -16,10 +16,11 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 
 ## Demo
 
-![CinematicEarth demo flyover](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)
+[![CinematicEarth demo flyover (5x speed). Click for the full video](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/Demo_vid_small.mp4)
 
+**▶ [Watch the full flyover at normal speed (MP4)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/Demo_vid_small.mp4)**
 
-*A flyover rendered with CinematicEarth and Google Earth Studio. Each stop gets a slow, tilted 45° orbit that pulls in toward the place, and the flights between stops are paced so nothing rushes across the map. The video plays above on GitHub; the looping preview links to the full MP4.*
+*The whole flyover at 5× speed, rendered with CinematicEarth and Google Earth Studio. Each stop gets a slow, tilted 45° orbit that pulls in toward the place, and the flights between stops are paced so nothing rushes across the map.*
 
 ## How it fits together
 
@@ -50,6 +51,7 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 12. [Google Colab](#12-google-colab)
 13. [Troubleshooting](#13-troubleshooting)
 14. [How it works](#14-how-it-works)
+15. [How to cite](#15-how-to-cite)
 
 ---
 
@@ -154,6 +156,20 @@ Earth Studio's terms require that credit on anything you publish. You can turn i
 | `--no-coords` | Hide coordinates |
 | `--no-counter` | Hide the `07 / 18` counter |
 | `--attribution "Google Earth"` | Credit text in the corner |
+
+---
+
+### Sharing a demo (GitHub / PyPI)
+
+A full-quality render is usually too big to share (GitHub's upload limit is 10 MB on free accounts). [`examples/make_demo_media.py`](https://github.com/MayerT1/CinematicEarth/blob/main/examples/make_demo_media.py) uses CinematicEarth's bundled ffmpeg, so there's nothing extra to install. It makes:
+
+- `Demo_vid_small.mp4`: the whole video at 960 px, sized to about 9 MB;
+- `demo.gif`: the whole flyover sped up (5× by default), which plays in READMEs and on PyPI.
+
+```bash
+python examples/make_demo_media.py --src flyover_final.mp4            # MP4 + GIF
+python examples/make_demo_media.py --src flyover_final.mp4 --no-mp4 --speed 4 --gif-mb 15
+```
 
 ---
 
@@ -475,6 +491,28 @@ The notebook walks through the full 18-stop example:
 - **Light projects.** The path is sampled densely, then reduced to the fewest keyframes that keep the error within tolerance: tight at stops, looser in flight. The 18-stop example uses about 660 keyframes in total, or about 130 per 90 s part.
 - **Products.** GeoTIFFs are reprojected to latitude/longitude with rasterio. 2D layers become a colour-mapped PNG in a KML GroundOverlay. 3D layers are averaged to the cell budget, binned into `levels` classes, turned into polygons per class, and written as extruded KML polygons (`relativeToGround`). Earth Studio renders KML Polygons, GroundOverlays and ScreenOverlays.
 - **The `.esp` format.** Earth Studio's project format isn't documented. CinematicEarth follows the structure of a real Earth Studio export, as worked out by [mkatzef/google-studio-utils](https://github.com/mkatzef/google-studio-utils).
+
+---
+
+## 15. How to cite
+
+If you use CinematicEarth in a publication, presentation or product video, please cite it:
+
+> Mayer, T. (2026). *CinematicEarth: cinematic Google Earth Studio flyovers with GeoTIFF products* (Version 0.3.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23746921
+
+```bibtex
+@software{mayer_cinematicearth_2026,
+  author    = {Mayer, Timothy},
+  title     = {{CinematicEarth: cinematic Google Earth Studio flyovers with GeoTIFF products}},
+  year      = {2026},
+  version   = {0.3.1},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.23746921},
+  url       = {https://doi.org/10.5281/zenodo.23746921}
+}
+```
+
+GitHub's **"Cite this repository"** button (in the repo sidebar) gives the same reference in APA and BibTeX, from [`CITATION.cff`](https://github.com/MayerT1/CinematicEarth/blob/main/CITATION.cff).
 
 ---
 

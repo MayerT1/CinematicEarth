@@ -19,3 +19,5 @@ frames/
 cinematicearth_layers/
 *.tif
 !tests/data/*.tif
+ffmpeg2pass*
+_palette.png

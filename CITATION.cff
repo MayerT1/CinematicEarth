@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "CinematicEarth: cinematic Google Earth Studio flyovers with GeoTIFF products"
+abstract: >-
+  CinematicEarth turns a list of places and GeoTIFF products into cinematic Google Earth
+  Studio flyovers: slow, tilted orbits at each stop, paced flights between stops, GeoTIFFs
+  as 2D draped or 3D extruded KML layers, and annotated MP4 output.
+authors:
+  - family-names: Mayer
+    given-names: Timothy
+    affiliation: "NASA EarthRISE, University of Alabama in Huntsville"
+version: 0.3.1
+date-released: 2026-10-28
+doi: 10.5281/zenodo.23746921
+license: MIT
+repository-code: "https://github.com/MayerT1/CinematicEarth"
+url: "https://pypi.org/project/CinematicEarth/"
+keywords:
+  - google earth studio
+  - flyover
+  - kml
+  - geotiff
+  - geospatial
+  - remote sensing

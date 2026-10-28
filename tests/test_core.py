@@ -11,7 +11,8 @@ from cinematicearth.model import parse_moves, Settings
 from cinematicearth.simulate import centering_error
 
 HERE = os.path.dirname(__file__)
-EX = os.path.join(HERE, "..", "examples", "stops_18.md")
+# fixed test fixture: examples/stops_18.md is yours to edit and is not used by the tests
+EX = os.path.join(HERE, "data", "stops_fixture.md")
 
 
 @pytest.fixture(scope="module")
