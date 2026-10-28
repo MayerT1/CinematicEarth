@@ -15,7 +15,7 @@ from .planner import plan_flyover, Plan
 from .esp import build_esp, write_esp, decode_tracks
 from .kml import build_kml, write_kml
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 __all__ = ["Settings", "Stop", "Plan", "load", "plan_flyover", "build", "write_esp", "write_kml",
            "build_esp", "decode_tracks", "parse_moves", "SPEED_PRESETS", "convert_layers", "__version__"]
 
@@ -58,9 +58,13 @@ def build(source, out: Optional[str] = "flyover.esp", kml: bool = True, plan_jso
 def convert_layers(settings, stops, verbose=True):
     """Convert settings.layers (GeoTIFFs) to KMZ; place 'fly' stops on their products."""
     from .layers import convert_layer, fly_stop_for
+    from .gedi import GediLayer, convert_gedi
     results = []
     for lay in settings.layers:
-        res = convert_layer(lay, settings.layers_dir, settings.drive_dir, verbose)
+        if isinstance(lay, GediLayer):
+            res = convert_gedi(lay, settings.layers_dir, settings.drive_dir, verbose)
+        else:
+            res = convert_layer(lay, settings.layers_dir, settings.drive_dir, verbose)
         results.append(res)
         for k, s in enumerate(stops):
             if s.layer == lay.title and (s.lat is None or s.lon is None):

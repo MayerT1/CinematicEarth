@@ -95,6 +95,68 @@ def stop_from_any(x) -> Stop:
 _LAYER_PREFIX = re.compile(r"^(layer|product|tif|raster)\s*:\s*", re.I)
 
 
+_GEDI_PREFIX = re.compile(r"^gedi\s*:\s*", re.I)
+
+
+def _is_gedi_line(line: str) -> bool:
+    first = re.sub(r"^\d+[.)]\s+", "", line.strip().lstrip("-*•").strip())
+    return bool(_GEDI_PREFIX.match(first))
+
+
+def gedi_from_any(x):
+    """GediLayer from a dict, a 'gedi: <aoi> | key=value ...' string, or a GediLayer."""
+    from .gedi import GediLayer
+    from dataclasses import fields as _f
+    if isinstance(x, GediLayer):
+        return x
+    keys = {f.name: f for f in _f(GediLayer)}
+    d = {}
+    if isinstance(x, dict):
+        items = [(str(k).lower(), v) for k, v in x.items() if str(k).lower() not in ("type", "gedi")]
+        if "gedi" in {str(k).lower() for k in x} and "aoi" not in x:
+            items.append(("aoi", x.get("gedi") or x.get("GEDI")))
+    else:
+        line = re.sub(r"^\d+[.)]\s+", "", str(x).strip().lstrip("-*•").strip())
+        parts = [p.strip() for p in re.split(r"\s+\|\s+|\t", line)]
+        items = [("aoi", _GEDI_PREFIX.sub("", parts[0]).strip())]
+        for p in parts[1:]:
+            for tok in re.split(r"\s+(?=[A-Za-z_]+\s*=)", p):
+                if "=" in tok:
+                    k, v = tok.split("=", 1)
+                    items.append((k.strip().lower(), v.strip().strip('"')))
+                else:
+                    for t in tok.lower().split():
+                        if t in ("fly", "flyto", "orbit"):
+                            items.append(("fly", "yes"))
+                        elif t in ("l2a", "l2b", "l4a"):
+                            items.append(("product", t))
+                        elif t in ("columns", "curtains", "grid2d", "grid3d"):
+                            prev = [v for k, v in items if k == "viz"]
+                            items = [(k, v) for k, v in items if k != "viz"] + [("viz", ",".join(prev + [t]))]
+                        elif t in ("year", "yearly", "by-year"):
+                            items.append(("by", "year"))
+    al = {"colour": "color", "colormap": "cmap", "palette": "cmap", "exag": "exaggeration", "z": "exaggeration",
+          "title": "name", "label": "name", "start": "t0", "end": "t1", "from": "t0", "to": "t1"}
+    for k, v in items:
+        k = al.get(k, k)
+        if k not in keys:
+            continue
+        if isinstance(v, str):
+            vs = v.strip()
+            if k in ("fly", "quality", "legend"):
+                v = vs.lower() in ("1", "true", "yes", "on", "y")
+            elif k == "exaggeration":
+                v = vs if vs.lower() == "auto" else float(vs.lower().rstrip("x"))
+            elif k in ("sides", "max_shots"):
+                v = int(float(vs))
+            elif k in ("vmin", "vmax", "radius", "opacity", "min_sensitivity", "cell", "duration", "elev"):
+                v = None if vs.lower() in ("", "none", "auto") else float(vs)
+            else:
+                v = vs
+        d[k] = v
+    return GediLayer(**d)
+
+
 def _is_layer_line(line: str) -> bool:
     from .layers import TIF_RE, DRIVE_RE
     first = re.sub(r"^\d+[.)]\s+", "", line.strip().lstrip("-*•").strip())
@@ -166,6 +228,18 @@ def layer_from_any(x):
     return Layer(source=src, **d)
 
 
+def _any_layer(x):
+    """Layer (GeoTIFF) or GediLayer, from whatever form it was given in."""
+    from .gedi import GediLayer
+    if isinstance(x, GediLayer):
+        return x
+    if isinstance(x, dict) and ({"gedi", "aoi"} & {str(k).lower() for k in x} or str(x.get("type", "")).lower() == "gedi"):
+        return gedi_from_any(x)
+    if isinstance(x, str) and _is_gedi_line(x):
+        return gedi_from_any(x)
+    return layer_from_any(x)
+
+
 def parse_stop_line(line: str) -> Stop:
     line = line.strip().lstrip("-*•").strip()
     line = re.sub(r"^\d+[.)]\s+", "", line)          # "1. Name"
@@ -223,7 +297,7 @@ def _md_table(lines: List[str]):
 
 def _add_layer(lay, stops, layers):
     layers.append(lay)
-    if lay.fly:
+    if getattr(lay, "fly", False):
         stops.append(Stop(name=lay.title, layer=lay.title, duration=lay.duration, moves=lay.moves,
                           elev=lay.elev, label=lay.title))
 
@@ -233,7 +307,7 @@ def parse_markdown(text: str):
     stops, table, settings = [], [], dict(meta)
     layers = []
     for x in settings.pop("layers", None) or []:
-        _add_layer(layer_from_any(x), stops, layers)
+        _add_layer(_any_layer(x), stops, layers)
     for ln in body.splitlines() + [""]:
         s = ln.strip()
         if s.startswith("|"):
@@ -249,7 +323,9 @@ def parse_markdown(text: str):
             settings[kv.group(1)] = kv.group(2)
             continue
         if re.match(r"^([-*•]|\d+[.)])\s+", s):
-            if _is_layer_line(s):
+            if _is_gedi_line(s):
+                _add_layer(gedi_from_any(s), stops, layers)
+            elif _is_layer_line(s):
                 _add_layer(layer_from_any(s), stops, layers)
             else:
                 stops.append(parse_stop_line(s))
@@ -284,7 +360,7 @@ def load(source: Union[str, os.PathLike, Iterable], **overrides) -> Tuple[Settin
             stops = [stop_from_any(x) for x in data]
             layers = []
             for x in lays:
-                _add_layer(layer_from_any(x), stops, layers)
+                _add_layer(_any_layer(x), stops, layers)
             if layers:
                 settings["layers"] = layers
         else:   # .txt or anything else: one stop per line
@@ -300,7 +376,7 @@ def load(source: Union[str, os.PathLike, Iterable], **overrides) -> Tuple[Settin
     clean = {}
     for k, v in settings.items():
         if k == "layers":
-            clean[k] = [layer_from_any(x) for x in (v or [])]
+            clean[k] = [_any_layer(x) for x in (v or [])]
         elif k in _SET_KEYS:
             clean[k] = _coerce_setting(k, v)
     for lay in clean.get("layers", []):          # fly stops for layers passed in code / overrides

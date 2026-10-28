@@ -10,7 +10,8 @@ Write your stops in a short text file and run one command. You get a Google Eart
 - slowly circles each place in a tilted 3D view, pulling in as it goes;
 - glides low between nearby places;
 - arcs up toward space between distant ones;
-- shows your GeoTIFF products as flat colour overlays or as 3D extruded models, and can orbit them.
+- shows your GeoTIFF products as flat colour overlays or as 3D extruded models, and can orbit them;
+- pulls in **GEDI spaceborne lidar** (via [SlideRule](https://slideruleearth.io) or NASA Harmony) and draws canopy height, biomass and foliage height diversity as 3D columns, canopy curtains and yearly time-series layers.
 
 Render the project in Earth Studio, then run one more command. You get an MP4 with an animated label for every place.
 
@@ -44,14 +45,15 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 5. [Writing a stop list](#5-writing-a-stop-list)
 6. [Camera moves](#6-camera-moves)
 7. [GeoTIFF products: 2D and 3D layers](#7-geotiff-products-2d-and-3d-layers)
-8. [Pacing and length](#8-pacing-and-length)
-9. [All settings](#9-all-settings)
-10. [Command reference](#10-command-reference)
-11. [Python API](#11-python-api)
-12. [Google Colab](#12-google-colab)
-13. [Troubleshooting](#13-troubleshooting)
-14. [How it works](#14-how-it-works)
-15. [How to cite](#15-how-to-cite)
+8. [GEDI lidar layers (SlideRule, L2B FHD)](#8-gedi-lidar-layers-sliderule-l2b-fhd)
+9. [Pacing and length](#9-pacing-and-length)
+10. [All settings](#10-all-settings)
+11. [Command reference](#11-command-reference)
+12. [Python API](#12-python-api)
+13. [Google Colab](#13-google-colab)
+14. [Troubleshooting](#14-troubleshooting)
+15. [How it works](#15-how-it-works)
+16. [How to cite](#16-how-to-cite)
 
 ---
 
@@ -65,6 +67,7 @@ pip install "CinematicEarth[all]"
 |---|---|
 | `pip install CinematicEarth` | Core only (needs only numpy): build `.esp` / `.kml` projects |
 | `pip install "CinematicEarth[all]"` | Everything: GeoTIFF layers, preview plots, YAML input, and annotated video (ffmpeg bundled) |
+| `pip install "CinematicEarth[gedi]"` | Core plus GEDI lidar layers (sliderule, h5py, earthaccess, harmony-py, geopandas) |
 | `pip install "CinematicEarth[layers]"` | Core plus GeoTIFF → 2D/3D KMZ (rasterio, matplotlib, pillow, gdown) |
 | `pip install "git+https://github.com/MayerT1/CinematicEarth.git"` | Latest development version |
 
@@ -179,7 +182,7 @@ python examples/make_demo_media.py --src flyover_final.mp4 --no-mp4 --speed 4 --
 
 ```markdown
 ---
-title: Partner sites           # settings go here (see section 9)
+title: Partner sites           # settings go here (see section 10)
 speed: slow
 stop_duration: 8
 orbit: 45
@@ -332,7 +335,79 @@ cinematicearth layer Stage3_transformer_rh.tif --mode both --units m --min-value
 
 ---
 
-## 8. Pacing and length
+## 8. GEDI lidar layers (SlideRule, L2B FHD)
+
+[![Open the GEDI notebook in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_GEDI_colab.ipynb)
+
+CinematicEarth can fetch **GEDI** lidar footprints for an area and draw them as 3D KML layers in the flyover. The worked example is the **Sewanee Domain, Tennessee**. It uses the same AOI as the [EarthRISE GEDI L2B tutorial](https://github.com/NASA-EarthRISE/training_Getting_started_with_GEDI_spaceborne_lidar/blob/main/tutorials/Exploring_forest_structure_with_GEDI_L2B.ipynb), built in as `aoi=sewanee`.
+
+| Product | Variables | Source | Login |
+|---|---|---|---|
+| **L2A** | ground elevation, canopy top → `canopy_height`, `elev_ground` | [SlideRule](https://slideruleearth.io) (`source=sliderule`) | none |
+| **L4A** | aboveground biomass density `agbd` (Mg/ha) | SlideRule | none |
+| **L2B** | **foliage height diversity `fhd_normal`**, `cover`, `pai`, `rh100` | NASA Harmony subset of GEDI02_B (`source=harmony`), or your own files (`source=h5:<dir>` / `table:<csv>`) | free [Earthdata](https://urs.earthdata.nasa.gov/) |
+
+SlideRule serves GEDI L1B, L2A and L4A, but not L2B. Foliage height diversity therefore comes from GEDI02_B files, downloaded for just your area by Harmony or supplied by you. That's the same route as the EarthRISE tutorial.
+
+**Visualisations** (`viz=`, combine with commas):
+
+| `viz` | Result |
+|---|---|
+| `columns` | one extruded column per GEDI shot; height = `height` variable × exaggeration, colour = `color` variable |
+| `curtains` | vertical walls along each ground track, tracing the canopy profile |
+| `grid2d` / `grid3d` | shots averaged on a `cell`-metre grid, draped flat or extruded (via the GeoTIFF layer pipeline) |
+| `by=year` | one KMZ per year. In Earth Studio, **Keyframe Opacity** each year in turn for a time series. |
+
+**In `stops.md`:**
+
+```markdown
+- Huntsville, AL | 34.7304, -86.5861, 190
+- gedi: sewanee | source=sliderule | l2a | columns curtains | by=year | fly
+- gedi: sewanee | source=harmony | l2b | columns | color=fhd_normal | height=rh100 | by=year
+- gedi: sewanee | source=sliderule | l4a | columns | color=agbd | height=agbd
+```
+
+`fly` adds a stop that frames the AOI and orbits it, placed at the ground elevation reported by GEDI.
+
+**Command line:**
+
+```bash
+cinematicearth gedi sewanee --product l2a --viz columns,curtains --by year
+cinematicearth gedi sewanee --source h5:gedi_l2b/ --product l2b --height rh100 --viz columns --by year
+cinematicearth gedi --bbox=-85.99,35.13,-85.86,35.24 --product l4a --color agbd --height agbd
+```
+
+**Python:**
+
+```python
+from cinematicearth import gedi as G
+l2a = G.sliderule_gedi("sewanee", "l2a", t0="2019-04-18")              # DataFrame of shots
+l2b = G.filter_l2b(G.read_l2b_h5(G.harmony_l2b("sewanee", "2019-04-18", "2024-12-31"), "sewanee"))
+layer = G.GediLayer(aoi="sewanee", source="harmony", product="l2b", viz="columns,curtains",
+                    color="fhd_normal", height="rh100", by="year", fly=True, after="Huntsville")
+plan = ce.build("stops.md", out="flyover.esp", layers=[layer])
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `aoi` | `sewanee` | Preset, GeoJSON path/URL, or `w,s,e,n` |
+| `source` | `sliderule` | `sliderule`, `harmony`, `h5:<file or dir>`, `table:<csv/parquet/geojson>` |
+| `product` | `l2a` | `l2a`, `l4a` (SlideRule) or `l2b` |
+| `color` / `height` | by product / `canopy_height` | Any column, e.g. `fhd_normal`, `rh100`, `cover`, `pai`, `agbd`, `elev_ground` |
+| `t0` / `t1` | all | Date range `YYYY-MM-DD` |
+| `quality` | `yes` | Drop degraded and low-quality shots (L2B: quality flag 1, sensitivity ≥ `min_sensitivity` 0.9) |
+| `radius` | `35` | Column radius (m). The real GEDI footprint is about 12.5 m, so columns are drawn wider to read on screen. |
+| `exaggeration` | `auto` | Height multiplier |
+| `max_shots` | `20000` | Random thinning above this |
+| `cell` | `250` | Grid cell for `grid2d` / `grid3d` (m) |
+| `cmap`, `vmin`, `vmax`, `opacity`, `legend` | | Styling |
+| `fly`, `after`, `moves`, `duration`, `elev` | | The orbiting stop |
+
+Data credit: GEDI data are from NASA / University of Maryland (LP DAAC, ORNL DAAC). SlideRule is developed by the University of Washington and NASA.
+
+---
+
+## 9. Pacing and length
 
 Between stops, the time each flight takes is calculated, not fixed. It's set from a cap on **perceived on-screen speed**, which combines:
 
@@ -358,7 +433,7 @@ Other controls:
 
 ---
 
-## 9. All settings
+## 10. All settings
 
 Put settings in the stop file's front matter, pass them as command-line flags, or pass them as Python keyword arguments.
 
@@ -382,12 +457,12 @@ Put settings in the stop file's front matter, pass them as command-line flags, o
 | `keyframe_tol_px` | `3` | `--keyframe-tol` | How far (px) a place may drift from centre between keyframes |
 | `layers_dir` | `cinematicearth_layers` | `--layers-dir` | Where product KMZs are written |
 | `drive_dir` | off | `--drive-dir` | Colab: copy KMZs to this Drive folder and link them into the `.esp` |
-| `layers` | none | | Product list (front matter, list lines, or `ce.build(..., layers=[...])`) |
+| `layers` | none | | Product list: GeoTIFF and `gedi:` lines, front matter, or `ce.build(..., layers=[...])` |
 | `glide_tilt`, `hop_tilt`, `hop_apex`, `glide_apex`, `space_range`, `min_leg`, `max_key_gap`, `sample_rate` | | | Advanced flight shape and keyframe settings |
 
 ---
 
-## 10. Command reference
+## 11. Command reference
 
 ```bash
 cinematicearth init stops.md                         # write an example stop list
@@ -399,6 +474,7 @@ cinematicearth simulate flyover_part01.esp flyover.plan.json -o wire.mp4   # wir
 cinematicearth annotate flyover.plan.json part01.zip part02.zip -o final.mp4
 cinematicearth layer product.tif --mode 3d --units m # GeoTIFF -> 2D / 3D .kmz
 cinematicearth build examples/stops_layers.md -o flyover.esp   # stops + GeoTIFF products
+cinematicearth gedi sewanee --product l2a --viz columns,curtains --by year   # GEDI lidar -> 3D KMZ
 cinematicearth smoketest                             # tiny 10 s test project for Earth Studio
 cinematicearth moves                                 # camera-move reference
 cinematicearth <command> --help                      # all options
@@ -406,7 +482,7 @@ cinematicearth <command> --help                      # all options
 
 ---
 
-## 11. Python API
+## 12. Python API
 
 ```python
 import cinematicearth as ce
@@ -449,7 +525,7 @@ annotate_video(["part01.zip", "part02.zip"], "flyover.plan.json", "final.mp4",
 
 ---
 
-## 12. Google Colab
+## 13. Google Colab
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
 
@@ -464,9 +540,15 @@ The notebook walks through the full 18-stop example:
 7. Upload your Earth Studio renders.
 8. Download the annotated MP4.
 
+Second notebook, **GEDI lidar over Sewanee, TN:**
+
+[![Open the GEDI notebook in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_GEDI_colab.ipynb)
+
+It takes the same stop list and adds a Sewanee stop. It fetches GEDI L2A and L4A from SlideRule and L2B foliage height diversity through Harmony, or from your uploads or Drive. It then builds columns, curtains, grids and yearly time-series layers, and downloads everything as one zip.
+
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -484,7 +566,7 @@ The notebook walks through the full 18-stop example:
 
 ---
 
-## 14. How it works
+## 15. How it works
 
 - **Locked-on camera.** Every moment is planned as "look at this point from this distance, tilt and direction". Each keyframe's camera position, pan and tilt are computed so the camera points exactly at the place. In tests, the place stays within 3 px of centre at every frame (`keyframe_tol_px`), even with Earth Studio interpolating between keyframes.
 - **Paced flights.** Flights are reshaped so on-screen speed rises and falls smoothly and never passes the `speed` cap.
@@ -494,7 +576,7 @@ The notebook walks through the full 18-stop example:
 
 ---
 
-## 15. How to cite
+## 16. How to cite
 
 If you use CinematicEarth in a publication, presentation or product video, please cite it:
 

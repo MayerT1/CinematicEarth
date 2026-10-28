@@ -419,11 +419,12 @@ def fly_stop_for(layer: Layer, res: LayerResult, settings):
     """A Stop that orbits the product, framed to its extent."""
     from .model import Stop
     diag = math.hypot(*res.extent_m)
-    top = (res.exaggeration or 0) * max(res.vmax, 0)
+    top = (res.exaggeration or 0) * max(getattr(res, "vmax_height", res.vmax), 0)
     r_end = max(1500.0, 0.85 * diag + 2 * top)
     r_start = 1.6 * r_end
     moves = layer.moves or f"orbit {settings.orbit} + zoom {r_start:.0f}>{r_end:.0f}"
     lat, lon = res.center
-    return Stop(name=res.name, lat=lat, lon=lon, elev=layer.elev if layer.elev is not None else 0.0,
+    elev = layer.elev if layer.elev is not None else getattr(res, "elev_hint", 0.0)
+    return Stop(name=res.name, lat=lat, lon=lon, elev=elev,
                 duration=layer.duration, moves=moves, label=res.name,
-                note=(f"{res.vmin:.3g}-{res.vmax:.3g} {layer.units}".strip() if layer.units else None))
+                note=(f"{res.vmin:.3g}-{res.vmax:.3g} {layer.units}".strip() if getattr(layer, "units", "") else None))

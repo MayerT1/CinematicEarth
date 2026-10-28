@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "CinematicEarth"
-version = "0.3.1"
-description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves + GeoTIFF products (2D/3D KML) -> .esp project, KML tour, annotated MP4"
+version = "0.4.0"
+description = "Cinematic multi-stop flyovers for Google Earth Studio: stop list + camera moves + GeoTIFF products and GEDI lidar (2D/3D KML) -> .esp project, KML tour, annotated MP4"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Tim Mayer", email = "tjm0042@uah.edu" }]
-keywords = ["google earth studio", "esp", "flyover", "kml", "kmz", "geotiff", "geospatial", "animation", "3d"]
+keywords = ["google earth studio", "esp", "flyover", "kml", "kmz", "geotiff", "geospatial", "animation", "3d", "gedi", "lidar", "sliderule"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -34,8 +34,9 @@ yaml = ["pyyaml"]
 plot = ["matplotlib"]
 video = ["opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg"]
 layers = ["rasterio", "matplotlib", "pillow", "gdown"]
-all = ["pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg", "rasterio", "gdown"]
-dev = ["pytest", "pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg", "rasterio", "gdown"]
+gedi = ["sliderule", "geopandas", "shapely", "pandas", "pyarrow", "h5py", "earthaccess", "harmony-py", "rasterio", "matplotlib", "pillow"]
+all = ["pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg", "rasterio", "gdown", "sliderule", "geopandas", "shapely", "pandas", "pyarrow", "h5py", "earthaccess", "harmony-py"]
+dev = ["pytest", "pyyaml", "matplotlib", "opencv-python-headless", "pillow", "tqdm", "imageio-ffmpeg", "rasterio", "gdown", "pandas", "h5py"]
 
 [project.scripts]
 cinematicearth = "cinematicearth.cli:main"

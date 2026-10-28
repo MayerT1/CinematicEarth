@@ -6,6 +6,7 @@
     cinematicearth annotate flyover.plan.json render.zip -o flyover_final.mp4
     cinematicearth annotate flyover.plan.json part01.zip part02.zip ...   (split projects)
     cinematicearth layer chm.tif --mode 3d --units m   # GeoTIFF -> 3D .kmz
+    cinematicearth gedi sewanee --product l2a --viz columns,curtains --by year   # GEDI -> 3D KMZ
     cinematicearth moves          # print the camera-move reference
     cinematicearth init stops.md  # write an example stop file
 """
@@ -130,6 +131,26 @@ def main(argv=None):
     ly.add_argument("-o", "--out-dir", default="cinematicearth_layers")
     ly.add_argument("--drive-dir", dest="drive_dir")
 
+    gd = sub.add_parser("gedi", help="GEDI lidar shots (SlideRule L2A/L4A, Harmony L2B, h5, csv) -> 3D KMZ layers")
+    gd.add_argument("aoi", nargs="?", help="'sewanee' or a GeoJSON path/URL (or use --bbox)")
+    gd.add_argument("--bbox", help="west,south,east,north  e.g. --bbox=-85.99,35.13,-85.86,35.24")
+    gd.add_argument("--source", default="sliderule", help="sliderule | harmony | h5:<file or dir> | table:<csv/parquet> | synthetic")
+    gd.add_argument("--product", default="l2a", help="l2a | l4a (sliderule), l2b (harmony / h5)")
+    gd.add_argument("--viz", default="columns", help="comma list: columns, curtains, grid2d, grid3d")
+    gd.add_argument("--color", help="colour variable (default: fhd_normal for l2b, agbd for l4a, else canopy_height)")
+    gd.add_argument("--height", help="height variable (default canopy_height)")
+    gd.add_argument("--cmap")
+    gd.add_argument("--by", choices=["year"], help="one KMZ per year (time series)")
+    gd.add_argument("--t0", help="start date YYYY-MM-DD")
+    gd.add_argument("--t1", help="end date YYYY-MM-DD")
+    gd.add_argument("--exaggeration", default="auto")
+    gd.add_argument("--radius", type=float, default=35.0, help="column radius (m)")
+    gd.add_argument("--max-shots", dest="max_shots", type=int, default=20000)
+    gd.add_argument("--no-quality", action="store_true", help="keep low-quality / degraded shots")
+    gd.add_argument("--name")
+    gd.add_argument("-o", "--out-dir", default="cinematicearth_layers")
+    gd.add_argument("--drive-dir", dest="drive_dir")
+
     sm = sub.add_parser("simulate", help="wireframe preview MP4 of an .esp (check motion before Earth Studio)")
     sm.add_argument("esp")
     sm.add_argument("plan", help="the .plan.json written by build")
@@ -178,6 +199,17 @@ def main(argv=None):
         res = convert_layer(lay, a.out_dir, a.drive_dir)
         for f, d in zip(res.files, res.drive_ids):
             print(f"wrote {f}" + (f"  (Drive id {d})" if d else ""))
+    elif a.cmd == "gedi":
+        from .gedi import GediLayer, convert_gedi
+        ex = a.exaggeration if str(a.exaggeration).lower() == "auto" else float(a.exaggeration)
+        if not (a.aoi or a.bbox):
+            raise SystemExit("give an AOI ('sewanee', a GeoJSON) or --bbox=w,s,e,n")
+        gl = GediLayer(aoi=a.bbox or a.aoi, source=a.source, product=a.product, viz=a.viz, color=a.color, height=a.height,
+                       cmap=a.cmap, by=a.by, t0=a.t0, t1=a.t1, exaggeration=ex, radius=a.radius,
+                       max_shots=a.max_shots, quality=not a.no_quality, name=a.name)
+        res = convert_gedi(gl, a.out_dir, a.drive_dir)
+        for f in res.files:
+            print(f"wrote {f}")
     elif a.cmd == "simulate":
         import json
         from .simulate import render_preview, PlanWindows
