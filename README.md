@@ -13,6 +13,16 @@ Write your stops in a short text file and run one command. You get a Google Eart
 
 Render the project in Earth Studio, then run one more command. You get an MP4 with an animated label for every place.
 
+## Demo
+
+https://github.com/user-attachments/assets/REPLACE-WITH-YOUR-UPLOADED-VIDEO-ID
+
+[![CinematicEarth demo flyover](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/Demo_vid_small.mp4)
+
+*A flyover rendered with CinematicEarth and Google Earth Studio. Each stop gets a slow, tilted 45° orbit that pulls in toward the place, and the flights between stops are paced so nothing rushes across the map. The video plays above on GitHub; the looping preview links to the full MP4.*
+
+## How it fits together
+
 ```text
  stops.md ──► cinematicearth build ──► flyover_part01.esp … ──► Google Earth Studio ──► rendered frames
                                       └► flyover.plan.json ───────────────────────────┐        │
@@ -23,6 +33,8 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 ---
 
 ## Contents
+
+- [Demo](#demo)
 
 1. [Install](#1-install)
 2. [Your first flyover (5 minutes)](#2-your-first-flyover-5-minutes)
