@@ -15,3 +15,7 @@ frames/
 !examples/*.kml
 *.png
 .venv/
+*.kmz
+cinematicearth_layers/
+*.tif
+!tests/data/*.tif

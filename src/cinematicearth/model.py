@@ -44,6 +44,9 @@ class Settings:
     max_key_gap: float = 4.0              # s, longest gap between .esp keyframes
     keyframe_every_frame: bool = False    # write every frame as a keyframe (huge .esp; not recommended)
     max_part_seconds: Optional[float] = None   # split into several .esp projects of at most this length
+    layers_dir: str = "cinematicearth_layers"  # where GeoTIFF layers are converted to .kmz
+    drive_dir: Optional[str] = None       # Colab: copy .kmz here (under /content/drive) and link it into the .esp
+    layers: list = field(default_factory=list)  # GeoTIFF products (cinematicearth.layers.Layer)
 
     def vmax(self) -> float:
         if isinstance(self.speed, (int, float)):
@@ -69,6 +72,7 @@ class Stop:
     heading: Optional[float] = None       # start heading at this stop (default: travel direction)
     label: Optional[str] = None           # on-screen title (default: name)
     note: Optional[str] = None            # extra annotation line
+    layer: Optional[str] = None           # name of a GeoTIFF layer this stop shows (fly stops)
 
     @property
     def title(self) -> str:

@@ -265,6 +265,8 @@ class Plan:
     rot: np.ndarray = None       # (N,2) heading(unwrapped), tilt
     report: List[dict] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    layers: list = field(default_factory=list)      # cinematicearth.layers.LayerResult
+    esp_files: list = field(default_factory=list)
 
     @property
     def duration(self) -> float:
@@ -365,13 +367,14 @@ class Plan:
 
     def to_json(self) -> dict:
         return {
-            "settings": self.settings.to_dict(),
+            "settings": {k: v for k, v in self.settings.to_dict().items() if k != "layers"},
             "duration": self.duration, "frames": self.frames,
             "stops": self.stop_windows(),
             "cuts": [p.t0 for p in self.pieces if p.kind == "cut"],
             "parts": [{"t_start": a, "t_end": b, "frames": int(round((b - a) * self.settings.fps))}
                       for a, b in self.parts()],
             "report": self.report,
+            "layers": [r.to_dict() if hasattr(r, "to_dict") else r for r in self.layers],
             "samples": {"t": self.times.tolist(), "cam": self.cam.tolist(),
                         "target": self.target.tolist(), "rot": self.rot.tolist()},
         }

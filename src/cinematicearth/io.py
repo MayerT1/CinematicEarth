@@ -92,6 +92,80 @@ def stop_from_any(x) -> Stop:
     raise TypeError(f"can't make a stop from {x!r}")
 
 
+_LAYER_PREFIX = re.compile(r"^(layer|product|tif|raster)\s*:\s*", re.I)
+
+
+def _is_layer_line(line: str) -> bool:
+    from .layers import TIF_RE, DRIVE_RE
+    first = re.sub(r"^\d+[.)]\s+", "", line.strip().lstrip("-*•").strip())
+    first = re.split(r"\s+\|\s+|\t", first)[0].strip()
+    if _LAYER_PREFIX.match(first):
+        return True
+    first = first.split("?")[0]
+    return bool(TIF_RE.search(first) or DRIVE_RE.search(first))
+
+
+def _coerce_layer(key, val):
+    from .layers import Layer
+    default = getattr(Layer(source=""), key)
+    if not isinstance(val, str):
+        return val
+    v = val.strip()
+    if key in ("fly", "legend"):
+        return v.lower() in ("1", "true", "yes", "on", "y")
+    if key == "exaggeration":
+        return v if v.lower() == "auto" else float(v.lower().rstrip("x"))
+    if key in ("band", "levels", "max_cells", "max_pixels"):
+        return int(float(v))
+    if key in ("vmin", "vmax", "min_value", "nodata", "opacity", "base", "duration", "elev"):
+        return None if v.lower() in ("", "none", "auto") else float(v)
+    return v
+
+
+_LAYER_ALIASES = {"colormap": "cmap", "colour": "cmap", "color": "cmap", "palette": "cmap", "exag": "exaggeration",
+                  "z": "exaggeration", "zscale": "exaggeration", "title": "name", "label": "name", "min": "vmin",
+                  "max": "vmax", "threshold": "min_value", "alpha": "opacity", "classes": "levels",
+                  "file": "source", "path": "source", "url": "source", "drive": "drive_id"}
+
+
+def layer_from_any(x):
+    """Layer from a dict, a 'path | key=value ...' string, or a Layer."""
+    from .layers import Layer
+    from dataclasses import fields as _f
+    keys = {f.name for f in _f(Layer)}
+    if isinstance(x, Layer):
+        return x
+    if isinstance(x, dict):
+        d = {}
+        for k, v in x.items():
+            k = _LAYER_ALIASES.get(str(k).lower(), str(k).lower())
+            if k in keys:
+                d[k] = _coerce_layer(k, v) if k != "source" else str(v)
+        return Layer(**d)
+    line = re.sub(r"^\d+[.)]\s+", "", str(x).strip().lstrip("-*•").strip())
+    parts = [p.strip() for p in re.split(r"\s+\|\s+|\t", line)]
+    src = _LAYER_PREFIX.sub("", parts[0]).strip().strip('"')
+    d = {}
+    for p in parts[1:]:
+        for tok in re.split(r"\s+(?=[A-Za-z_]+\s*=)", p):
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                k = _LAYER_ALIASES.get(k.strip().lower(), k.strip().lower())
+                if k in keys:
+                    d[k] = _coerce_layer(k, v.strip().strip('"')) if k != "source" else v.strip()
+                continue
+            for t in tok.lower().split():
+                if t in ("2d", "3d", "both"):
+                    d["mode"] = t
+                elif t in ("fly", "flyto", "orbit"):
+                    d["fly"] = True
+                elif t in ("terraces", "prisms"):
+                    d["style"] = t
+                elif t in ("nolegend", "no-legend"):
+                    d["legend"] = False
+    return Layer(source=src, **d)
+
+
 def parse_stop_line(line: str) -> Stop:
     line = line.strip().lstrip("-*•").strip()
     line = re.sub(r"^\d+[.)]\s+", "", line)          # "1. Name"
@@ -147,9 +221,19 @@ def _md_table(lines: List[str]):
     return [dict(zip(head, r)) for r in rows[1:]]
 
 
+def _add_layer(lay, stops, layers):
+    layers.append(lay)
+    if lay.fly:
+        stops.append(Stop(name=lay.title, layer=lay.title, duration=lay.duration, moves=lay.moves,
+                          elev=lay.elev, label=lay.title))
+
+
 def parse_markdown(text: str):
     meta, body = _front_matter(text)
     stops, table, settings = [], [], dict(meta)
+    layers = []
+    for x in settings.pop("layers", None) or []:
+        _add_layer(layer_from_any(x), stops, layers)
     for ln in body.splitlines() + [""]:
         s = ln.strip()
         if s.startswith("|"):
@@ -165,7 +249,12 @@ def parse_markdown(text: str):
             settings[kv.group(1)] = kv.group(2)
             continue
         if re.match(r"^([-*•]|\d+[.)])\s+", s):
-            stops.append(parse_stop_line(s))
+            if _is_layer_line(s):
+                _add_layer(layer_from_any(s), stops, layers)
+            else:
+                stops.append(parse_stop_line(s))
+    if layers:
+        settings["layers"] = layers
     return settings, stops
 
 
@@ -187,10 +276,17 @@ def load(source: Union[str, os.PathLike, Iterable], **overrides) -> Tuple[Settin
             else:
                 import yaml  # type: ignore
                 data = yaml.safe_load(text)
+            lays = []
             if isinstance(data, dict):
                 settings = data.get("settings", {}) or {}
+                lays = data.get("layers", []) or []
                 data = data.get("stops", [])
             stops = [stop_from_any(x) for x in data]
+            layers = []
+            for x in lays:
+                _add_layer(layer_from_any(x), stops, layers)
+            if layers:
+                settings["layers"] = layers
         else:   # .txt or anything else: one stop per line
             settings, stops = parse_markdown("\n".join(
                 ln if ln.strip().startswith(("-", "*", "#", "|", "---")) or _KV.match(ln) and
@@ -203,6 +299,18 @@ def load(source: Union[str, os.PathLike, Iterable], **overrides) -> Tuple[Settin
     settings.update({k: v for k, v in overrides.items() if v is not None})
     clean = {}
     for k, v in settings.items():
-        if k in _SET_KEYS:
+        if k == "layers":
+            clean[k] = [layer_from_any(x) for x in (v or [])]
+        elif k in _SET_KEYS:
             clean[k] = _coerce_setting(k, v)
+    for lay in clean.get("layers", []):          # fly stops for layers passed in code / overrides
+        if lay.fly and not any(s.layer == lay.title for s in stops):
+            st = Stop(name=lay.title, layer=lay.title, duration=lay.duration, moves=lay.moves,
+                      elev=lay.elev, label=lay.title)
+            idx = len(stops)
+            if lay.after:
+                hit = [i for i, s in enumerate(stops) if s.name.lower().startswith(lay.after.lower())]
+                if hit:
+                    idx = hit[0] + 1
+            stops.insert(idx, st)
     return Settings(**clean), stops

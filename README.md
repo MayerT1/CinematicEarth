@@ -2,13 +2,14 @@
 
 [![PyPI](https://img.shields.io/pypi/v/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![Python](https://img.shields.io/pypi/pyversions/CinematicEarth.svg)](https://pypi.org/project/CinematicEarth/) [![tests](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml/badge.svg)](https://github.com/MayerT1/CinematicEarth/actions/workflows/tests.yml) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
 
-**Turn a list of places into a cinematic Google Earth Studio flyover.**
+**Turn a list of places, and your GeoTIFF products, into a cinematic Google Earth Studio flyover.**
 
 Write your stops in a short text file and run one command. You get a Google Earth Studio project where the camera:
 
 - slowly circles each place in a tilted 3D view, pulling in as it goes;
 - glides low between nearby places;
-- arcs up toward space between distant ones.
+- arcs up toward space between distant ones;
+- shows your GeoTIFF products as flat colour overlays or as 3D extruded models, and can orbit them.
 
 Render the project in Earth Studio, then run one more command. You get an MP4 with an animated label for every place.
 
@@ -29,13 +30,14 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 4. [Adding the annotations](#4-adding-the-annotations)
 5. [Writing a stop list](#5-writing-a-stop-list)
 6. [Camera moves](#6-camera-moves)
-7. [Pacing and length](#7-pacing-and-length)
-8. [All settings](#8-all-settings)
-9. [Command reference](#9-command-reference)
-10. [Python API](#10-python-api)
-11. [Google Colab](#11-google-colab)
-12. [Troubleshooting](#12-troubleshooting)
-13. [How it works](#13-how-it-works)
+7. [GeoTIFF products: 2D and 3D layers](#7-geotiff-products-2d-and-3d-layers)
+8. [Pacing and length](#8-pacing-and-length)
+9. [All settings](#9-all-settings)
+10. [Command reference](#10-command-reference)
+11. [Python API](#11-python-api)
+12. [Google Colab](#12-google-colab)
+13. [Troubleshooting](#13-troubleshooting)
+14. [How it works](#14-how-it-works)
 
 ---
 
@@ -48,7 +50,8 @@ pip install "CinematicEarth[all]"
 | Install | What you get |
 |---|---|
 | `pip install CinematicEarth` | Core only (needs only numpy): build `.esp` / `.kml` projects |
-| `pip install "CinematicEarth[all]"` | Plus preview plots, YAML input, and annotated video (ffmpeg bundled) |
+| `pip install "CinematicEarth[all]"` | Everything: GeoTIFF layers, preview plots, YAML input, and annotated video (ffmpeg bundled) |
+| `pip install "CinematicEarth[layers]"` | Core plus GeoTIFF → 2D/3D KMZ (rasterio, matplotlib, pillow, gdown) |
 | `pip install "git+https://github.com/MayerT1/CinematicEarth.git"` | Latest development version |
 
 It needs Python 3.9 or newer and runs on Windows, macOS, Linux and Colab. Check the install with:
@@ -148,7 +151,7 @@ Earth Studio's terms require that credit on anything you publish. You can turn i
 
 ```markdown
 ---
-title: Partner sites           # settings go here (see section 8)
+title: Partner sites           # settings go here (see section 9)
 speed: slow
 stop_duration: 8
 orbit: 45
@@ -235,7 +238,73 @@ To see this reference in the terminal, run `cinematicearth moves`.
 
 ---
 
-## 7. Pacing and length
+## 7. GeoTIFF products: 2D and 3D layers
+
+List GeoTIFF products in the same file as your stops. Each one is converted to a **KMZ** that Earth Studio renders in the flyover:
+
+| `mode` | What you see |
+|---|---|
+| `2d` | The raster, colour-mapped, **draped flat on the terrain** (a KML GroundOverlay), plus an on-screen colour-bar legend |
+| `3d` | The raster values **extruded into 3D shapes**: height = value × exaggeration, colour = value. Good for canopy height, elevation, biomass and similar. |
+| `both` | Both of the above |
+
+```markdown
+---
+title: Products flyover
+max_part_seconds: 90
+---
+- Huntsville, AL | 34.7304, -86.5861, 190
+
+- layer: Stage3_transformer_rh.tif | 3d fly | name=Canopy height (rh) | units=m | cmap=viridis | min_value=2
+- layer: Stage3_transformer_rh.tif | 2d | name=Canopy height 2D | units=m | opacity=0.8
+
+- Santa Fe, NM | 35.6870, -105.9378, 2130
+```
+
+A product line starts with `layer:`. A line whose first field is a `.tif` path or a Google Drive link counts too. **`fly`** adds a stop that frames the product and slowly orbits it, at that point in the flight. A ready-made example is in [`examples/stops_layers.md`](https://github.com/MayerT1/CinematicEarth/blob/main/examples/stops_layers.md).
+
+**Where the TIFF can come from:**
+
+- a local path: `Stage3_transformer_rh.tif`
+- a mounted Google Drive path in Colab: `/content/drive/MyDrive/…/file.tif`
+- a Drive share link: `https://drive.google.com/file/d/<id>/view` (downloaded with gdown; the file must be shared by link)
+- `drive:<id>`, or any `https://` URL
+
+Any projection works; it's reprojected to latitude/longitude automatically.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `name=` | file name | Title (legend, stop card) |
+| `band=` | `1` | Band to use |
+| `cmap=` | `viridis` | Any matplotlib colour map (`YlGn`, `magma`, `terrain`, …) |
+| `vmin=` / `vmax=` | 2nd / 98th percentile | Colour (and height) range |
+| `min_value=` | none | Values below this are transparent / not extruded (e.g. `2` for canopy) |
+| `units=` | | Shown in the legend |
+| `opacity=` | `0.85` | |
+| `exaggeration=` | `auto` | 3D height multiplier. `auto` makes the tallest shape about 5% of the product's width. |
+| `levels=` | `12` | Number of 3D colour/height steps |
+| `style=` | `terraces` | `terraces` merges equal steps into stepped 3D shapes (light); `prisms` makes one column per cell (blockier, heavier) |
+| `max_cells=` | `30000` | 3D detail budget: the raster is averaged down to about this many cells |
+| `legend=` | `yes` | On-screen colour bar |
+| `fly` / `after=` | off | Add an orbiting stop; `after=Huntsville` places it after that stop |
+| `moves=` / `duration=` / `elev=` | auto | Camera moves, time and ground elevation for the fly stop |
+
+**Getting the products into Earth Studio.** Earth Studio doesn't store KML inside the `.esp`; it references KML/KMZ files in your **Google Drive**. There are two ways in:
+
+1. **Automatic (Colab):** set `drive_dir: /content/drive/MyDrive/CinematicEarth` (or `ce.build(..., drive_dir=...)`). The KMZs are copied to your Drive and linked into every `.esp` part by file ID. The build prints *"layers linked into the .esp"*.
+2. **Manual (always works):** in Earth Studio, open **Overlays → Import** and pick the `.kmz` files (from `cinematicearth_layers/` or your Drive). Do this once in each project part. The build prints the files to import.
+
+In the Overlays panel, you can **Keyframe Opacity** to fade a product in as the camera arrives.
+
+Convert a single TIFF without a flyover:
+
+```bash
+cinematicearth layer Stage3_transformer_rh.tif --mode both --units m --min-value 2 --cmap viridis
+```
+
+---
+
+## 8. Pacing and length
 
 Between stops, the time each flight takes is calculated, not fixed. It's set from a cap on **perceived on-screen speed**, which combines:
 
@@ -261,7 +330,7 @@ Other controls:
 
 ---
 
-## 8. All settings
+## 9. All settings
 
 Put settings in the stop file's front matter, pass them as command-line flags, or pass them as Python keyword arguments.
 
@@ -283,11 +352,14 @@ Put settings in the stop file's front matter, pass them as command-line flags, o
 | `cut_km` | off | `--cut-km` | Above this distance, hard cut |
 | `max_part_seconds` | off | `--split` | Split into Earth Studio projects of at most this length (90 recommended) |
 | `keyframe_tol_px` | `3` | `--keyframe-tol` | How far (px) a place may drift from centre between keyframes |
+| `layers_dir` | `cinematicearth_layers` | `--layers-dir` | Where product KMZs are written |
+| `drive_dir` | off | `--drive-dir` | Colab: copy KMZs to this Drive folder and link them into the `.esp` |
+| `layers` | none | | Product list (front matter, list lines, or `ce.build(..., layers=[...])`) |
 | `glide_tilt`, `hop_tilt`, `hop_apex`, `glide_apex`, `space_range`, `min_leg`, `max_key_gap`, `sample_rate` | | | Advanced flight shape and keyframe settings |
 
 ---
 
-## 9. Command reference
+## 10. Command reference
 
 ```bash
 cinematicearth init stops.md                         # write an example stop list
@@ -297,6 +369,8 @@ cinematicearth build stops.md --template my_export.esp   # write into a project 
 cinematicearth preview stops.md -o preview.png       # path / height / speed plots
 cinematicearth simulate flyover_part01.esp flyover.plan.json -o wire.mp4   # wireframe motion preview
 cinematicearth annotate flyover.plan.json part01.zip part02.zip -o final.mp4
+cinematicearth layer product.tif --mode 3d --units m # GeoTIFF -> 2D / 3D .kmz
+cinematicearth build examples/stops_layers.md -o flyover.esp   # stops + GeoTIFF products
 cinematicearth smoketest                             # tiny 10 s test project for Earth Studio
 cinematicearth moves                                 # camera-move reference
 cinematicearth <command> --help                      # all options
@@ -304,7 +378,7 @@ cinematicearth <command> --help                      # all options
 
 ---
 
-## 10. Python API
+## 11. Python API
 
 ```python
 import cinematicearth as ce
@@ -326,6 +400,16 @@ settings, stops = ce.load("stops.md", speed="medium")
 plan = ce.plan_flyover(stops, settings)
 plan.stop_windows()          # when each stop starts and ends (seconds)
 
+# GeoTIFF products, passed in code (same options as the markdown lines)
+plan = ce.build("stops.md", out="flyover.esp", layers=[
+    dict(source="Stage3_transformer_rh.tif", name="Canopy height", mode="3d", units="m",
+         min_value=2, fly=True, after="Huntsville"),
+])
+plan.layers                  # converted products: files, bounds, colour range, exaggeration
+
+from cinematicearth.layers import Layer, convert_layer       # one product on its own
+convert_layer(Layer("Stage3_transformer_rh.tif", mode="both", units="m"), out_dir="kmz")
+
 # preview and annotate
 from cinematicearth.preview import plot_plan
 plot_plan(plan)
@@ -337,7 +421,7 @@ annotate_video(["part01.zip", "part02.zip"], "flyover.plan.json", "final.mp4",
 
 ---
 
-## 11. Google Colab
+## 12. Google Colab
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MayerT1/CinematicEarth/blob/main/examples/CinematicEarth_colab.ipynb)
 
@@ -345,15 +429,16 @@ The notebook walks through the full 18-stop example:
 
 1. Install.
 2. Edit the stop list.
-3. Build and preview the path.
-4. Watch a wireframe preview of the motion.
-5. Download the projects.
-6. Upload your Earth Studio renders.
-7. Download the annotated MP4.
+3. Add GeoTIFF products from your **Drive**, a **Drive link**, or an **upload**, and preview them.
+4. Build and preview the path.
+5. Watch a wireframe preview of the motion.
+6. Download the projects and KMZs.
+7. Upload your Earth Studio renders.
+8. Download the annotated MP4.
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -363,15 +448,20 @@ The notebook walks through the full 18-stop example:
 | **Too fast / too slow** | Change `speed`, `stop_duration` and `orbit`, or use `cut_km` for very long flights. Check with `cinematicearth preview`. |
 | **Labels appear at the wrong time** | Pass the renders to `annotate` in the right order, one per part, together with the `.plan.json` from the same build. |
 | **`ffmpeg not found`** | `pip install "CinematicEarth[video]"` (it includes a bundled ffmpeg). |
+| **A product doesn't show in Earth Studio** | Import its `.kmz` with **Overlays → Import**. If it was linked automatically but shows as missing, Earth Studio can't read that Drive file, so import it by hand. |
+| **3D product is slow or too heavy** | Lower `max_cells` (e.g. `10000`) or `levels`, or use `style=terraces` |
+| **3D shapes too flat or too tall** | Set `exaggeration=` (e.g. `20`) instead of `auto` |
+| **Drive link won't download** | Share the file as "Anyone with the link", or mount Drive in Colab and use the `/content/drive/...` path |
 | **Want Google Earth Pro instead** | Open `flyover.kml`, double-click the tour, and record it with **Tools → Movie Maker**. |
 
 ---
 
-## 13. How it works
+## 14. How it works
 
 - **Locked-on camera.** Every moment is planned as "look at this point from this distance, tilt and direction". Each keyframe's camera position, pan and tilt are computed so the camera points exactly at the place. In tests, the place stays within 3 px of centre at every frame (`keyframe_tol_px`), even with Earth Studio interpolating between keyframes.
 - **Paced flights.** Flights are reshaped so on-screen speed rises and falls smoothly and never passes the `speed` cap.
 - **Light projects.** The path is sampled densely, then reduced to the fewest keyframes that keep the error within tolerance: tight at stops, looser in flight. The 18-stop example uses about 660 keyframes in total, or about 130 per 90 s part.
+- **Products.** GeoTIFFs are reprojected to latitude/longitude with rasterio. 2D layers become a colour-mapped PNG in a KML GroundOverlay. 3D layers are averaged to the cell budget, binned into `levels` classes, turned into polygons per class, and written as extruded KML polygons (`relativeToGround`). Earth Studio renders KML Polygons, GroundOverlays and ScreenOverlays.
 - **The `.esp` format.** Earth Studio's project format isn't documented. CinematicEarth follows the structure of a real Earth Studio export, as worked out by [mkatzef/google-studio-utils](https://github.com/mkatzef/google-studio-utils).
 
 ---

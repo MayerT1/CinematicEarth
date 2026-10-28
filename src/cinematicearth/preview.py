@@ -25,7 +25,11 @@ def plot_plan(plan, path=None, show=True):
     a.scatter([s.lon for s in plan.stops], [s.lat for s in plan.stops], c="r", s=14, zorder=3)
     for i, s in enumerate(plan.stops):
         a.annotate(str(i + 1), (s.lon, s.lat), fontsize=7, xytext=(3, 3), textcoords="offset points")
-    a.set_title("ground track"); a.set_xlabel("lon"); a.set_ylabel("lat"); a.legend(fontsize=8)
+    for r in getattr(plan, "layers", []) or []:
+        w_, s_, e_, n_ = r.bounds
+        a.add_patch(plt.Rectangle((w_, s_), e_ - w_, n_ - s_, fill=False, ec="g", lw=1.2))
+        a.annotate(r.name, (w_, n_), fontsize=7, color="g")
+    a.set_title("ground track (green = layers)"); a.set_xlabel("lon"); a.set_ylabel("lat"); a.legend(fontsize=8)
 
     a = ax[0, 1]
     a.semilogy(t, cam[:, 2] - tgt[:, 2], lw=0.8)

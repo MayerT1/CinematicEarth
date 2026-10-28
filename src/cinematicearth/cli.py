@@ -5,6 +5,7 @@
     cinematicearth preview stops.md -o preview.png
     cinematicearth annotate flyover.plan.json render.zip -o flyover_final.mp4
     cinematicearth annotate flyover.plan.json part01.zip part02.zip ...   (split projects)
+    cinematicearth layer chm.tif --mode 3d --units m   # GeoTIFF -> 3D .kmz
     cinematicearth moves          # print the camera-move reference
     cinematicearth init stops.md  # write an example stop file
 """
@@ -36,7 +37,7 @@ tilt: 60             # 0 = straight down, 90 = horizon
 def _overrides(a):
     keys = ["duration", "speed", "stop_duration", "orbit", "tilt", "fps", "width", "height",
             "range_start", "range_end", "title", "ease", "max_part_seconds", "keyframe_tol_px", "cut_km",
-            "direction"]
+            "direction", "layers_dir", "drive_dir"]
     ov = {k: getattr(a, k) for k in keys if getattr(a, k, None) is not None}
     if getattr(a, "no_intro", False):
         ov["intro"] = False
@@ -74,6 +75,9 @@ def _add_common(p):
     p.add_argument("--keyframe-tol", dest="keyframe_tol_px", type=float, help="px drift allowed at stops (default 3)")
     p.add_argument("--cut-km", dest="cut_km", type=float, help="hops longer than this become hard cuts")
     p.add_argument("--direction", help="orbit direction: alternate | 1 | -1")
+    p.add_argument("--layers-dir", dest="layers_dir", help="where GeoTIFF layers are converted to .kmz")
+    p.add_argument("--drive-dir", dest="drive_dir",
+                   help="Colab: copy layer .kmz here (under /content/drive) and link them into the .esp")
     p.add_argument("--every-frame", action="store_true", help="one keyframe per frame (big .esp)")
     p.add_argument("--title")
     p.add_argument("--no-intro", action="store_true")
@@ -106,6 +110,25 @@ def main(argv=None):
     an.add_argument("--no-coords", action="store_true")
     an.add_argument("--no-counter", action="store_true")
     an.add_argument("--attribution", default="Google Earth")
+
+    ly = sub.add_parser("layer", help="convert a GeoTIFF to a 2D / 3D .kmz overlay")
+    ly.add_argument("source", help="GeoTIFF path, Google Drive link, drive:<id>, or URL")
+    ly.add_argument("--mode", default="2d", choices=["2d", "3d", "both"])
+    ly.add_argument("--name")
+    ly.add_argument("--band", type=int, default=1)
+    ly.add_argument("--cmap", default="viridis")
+    ly.add_argument("--vmin", type=float)
+    ly.add_argument("--vmax", type=float)
+    ly.add_argument("--min-value", dest="min_value", type=float, help="values below this are transparent")
+    ly.add_argument("--units", default="")
+    ly.add_argument("--opacity", type=float, default=0.85)
+    ly.add_argument("--exaggeration", default="auto", help="3D height multiplier or 'auto'")
+    ly.add_argument("--levels", type=int, default=12, help="3D colour/height classes")
+    ly.add_argument("--style", default="terraces", choices=["terraces", "prisms"])
+    ly.add_argument("--max-cells", dest="max_cells", type=int, default=30000)
+    ly.add_argument("--no-legend", action="store_true")
+    ly.add_argument("-o", "--out-dir", default="cinematicearth_layers")
+    ly.add_argument("--drive-dir", dest="drive_dir")
 
     sm = sub.add_parser("simulate", help="wireframe preview MP4 of an .esp (check motion before Earth Studio)")
     sm.add_argument("esp")
@@ -146,6 +169,15 @@ def main(argv=None):
                           attribution=a.attribution)
         annotate_video(a.render if len(a.render) > 1 else a.render[0], a.plan, a.out, st)
         print(f"wrote {a.out}")
+    elif a.cmd == "layer":
+        from .layers import Layer, convert_layer
+        ex = a.exaggeration if str(a.exaggeration).lower() == "auto" else float(a.exaggeration)
+        lay = Layer(source=a.source, name=a.name, mode=a.mode, band=a.band, cmap=a.cmap, vmin=a.vmin, vmax=a.vmax,
+                    min_value=a.min_value, units=a.units, opacity=a.opacity, exaggeration=ex, levels=a.levels,
+                    style=a.style, max_cells=a.max_cells, legend=not a.no_legend)
+        res = convert_layer(lay, a.out_dir, a.drive_dir)
+        for f, d in zip(res.files, res.drive_ids):
+            print(f"wrote {f}" + (f"  (Drive id {d})" if d else ""))
     elif a.cmd == "simulate":
         import json
         from .simulate import render_preview, PlanWindows

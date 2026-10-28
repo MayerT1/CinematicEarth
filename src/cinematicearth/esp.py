@@ -170,6 +170,37 @@ def _inject(template: dict, pos, rotb, frames, fps, width, height, name):
     return esp
 
 
+_KML_STYLE = {"fillColor": "ffffff", "fillOpacity": "7f", "lineColor": "ffffff", "fillVisible": "",
+              "outlineVisible": "", "lineOpacity": "ff", "lineWidth": 2}
+
+
+def kml_entries(plan):
+    """Earth Studio 'world.kmls' entries for layer KMZs that live in Google Drive."""
+    import os
+    import time
+    out, ms = [], int(time.time() * 1000)
+    for r in getattr(plan, "layers", []) or []:
+        files = r.files if hasattr(r, "files") else r["files"]
+        ids = r.drive_ids if hasattr(r, "drive_ids") else r.get("drive_ids", [])
+        for f, fid in zip(files, ids):
+            if fid:
+                k = len(out)
+                out.append({"url": f"/studio/api/files/{fid}", "name": os.path.basename(f),
+                            "style": dict(_KML_STYLE), "refId": 600 + k, "idPrefix": f"kml{ms}{k}",
+                            "ignoredMissingLocalFiles": False})
+    return out
+
+
+def _add_world(esp: dict, kmls):
+    if not kmls:
+        return esp
+    for sc in esp.get("scenes", []):
+        world = sc.setdefault("world", {})
+        world.setdefault("kmls", [])
+        world["kmls"] = list(world["kmls"]) + kmls
+    return esp
+
+
 def build_esp(plan, template: Optional[dict] = None, part: Optional[int] = None) -> dict:
     """Project dict for the whole plan, or for one part (see Settings.max_part_seconds)."""
     st = plan.settings
@@ -180,8 +211,10 @@ def build_esp(plan, template: Optional[dict] = None, part: Optional[int] = None)
     pos, rotb = encode_tracks(t, cam, rot, frames / st.fps)
     name = st.title if len(parts) == 1 or part is None else f"{st.title} part {part + 1}"
     if template is not None:
-        return _inject(template, pos, rotb, frames, st.fps, st.width, st.height, name)
-    return _template(name, st.fps, st.width, st.height, frames, pos, rotb)
+        esp = _inject(template, pos, rotb, frames, st.fps, st.width, st.height, name)
+    else:
+        esp = _template(name, st.fps, st.width, st.height, frames, pos, rotb)
+    return _add_world(esp, kml_entries(plan))
 
 
 def write_esp(plan, path, template_path: Optional[str] = None):
