@@ -15,7 +15,7 @@ Render the project in Earth Studio, then run one more command. You get an MP4 wi
 
 ## Demo
 
-   [![CinematicEarth demo flyover](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/Demo_vid_small.mp4)
+[![CinematicEarth demo flyover](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/Demo_vid_small.mp4)
 
 [![CinematicEarth demo flyover](https://raw.githubusercontent.com/MayerT1/CinematicEarth/main/examples/demo.gif)](https://github.com/MayerT1/CinematicEarth/blob/main/examples/demo.gif)
 
